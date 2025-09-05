@@ -1,5 +1,5 @@
 # this is the project structure
-
+```
 /riscv_cpu
  ├── /src
  │    ├── pc.v
@@ -26,3 +26,4 @@
  │    ├── test_mul.hex
  ├── README.md
  └── Makefile  (optional for build automation)
+```
