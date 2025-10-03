@@ -1,8 +1,8 @@
-# this is the project structure
+# checklist
 ```
 /riscv_cpu
  ├── /src
- │    ├── pc.v
+ │    ├── pc.v (done)
  │    ├── instruction_memory.v
  │    ├── decoder.v
  │    ├── reg_file.v
