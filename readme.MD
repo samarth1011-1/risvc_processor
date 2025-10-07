@@ -2,10 +2,10 @@
 ```
 /riscv_cpu
  ├── /src
- │    ├── pc.v (done)
- │    ├── instruction_memory.v
+ │    ├── pc.v                      (done)
+ │    ├── instruction_memory.v      (done)
  │    ├── decoder.v
- │    ├── reg_file.v
+ │    ├── reg_file.v                (done)
  │    ├── control_unit.v
  │    ├── alu.v
  │    ├── mul_div_unit.v
