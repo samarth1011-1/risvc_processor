@@ -4,7 +4,7 @@
  ├── /src
  │    ├── pc.v                      (done)
  │    ├── instruction_memory.v      (done)
- │    ├── decoder.v
+ │    ├── decoder.v                 (done)
  │    ├── reg_file.v                (done)
  │    ├── control_unit.v
  │    ├── alu.v
