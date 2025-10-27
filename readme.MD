@@ -6,8 +6,8 @@
  │    ├── instruction_memory.v      (done)
  │    ├── decoder.v                 (done)
  │    ├── reg_file.v                (done)
- │    ├── control_unit.v
- │    ├── alu.v
+ │    ├── control_unit.v            (done)
+ │    ├── alu.v                     (done)
  │    ├── mul_div_unit.v
  │    ├── forwarding_unit.v
  │    ├── hazard_detection.v
