@@ -8,7 +8,7 @@ module alu_control(
     input [1:0] ALUop, // Control unit output
     input [2:0] funct3, // Adds context
     input [6:0] funct7, // Adds context
-    output reg [3:0] ALU_control
+    output reg [3:0] ALU_control // This tells the actual ALU to perform specific operations based on the opcode
 );
 
 always@(*) begin
