@@ -13,7 +13,7 @@
  │    ├── hazard_detection.v
  │    ├── branch_predictor.v
  │    ├── data_memory.v
- │    ├── pipeline_registers.v
+ │    ├── pipeline_registers.v      (done)
  │    ├── top_module.v
  ├── /tb
  │    ├── tb_pc.v
