@@ -8,11 +8,13 @@ module alu_control(
     input [1:0] ALUop, // Control unit output
     input [2:0] funct3, // Adds context
     input [6:0] funct7, // Adds context
-    output reg [3:0] ALU_control
+    output reg [3:0] ALU_control ,// This tells the actual ALU to perform specific operations based on the opcode
+    output reg is_muldiv, // is HIGH during multiplication/division operation
+    output reg [2:0] muldiv_op // outputs the funct3 required for mul/div operation
 );
 
 always@(*) begin
-    ALU_control = 4'b0000;
+    ALU_control = 4'b0000;is_muldiv=0;muldiv_op=3'b0;
     if(ALUop == 2'b00)ALU_control = 4'b0000; // ADD
     else if(ALUop == 2'b01)ALU_control = 4'b0001; // SUB
     /*
@@ -20,6 +22,11 @@ always@(*) begin
     and even funct7
     */
     else if(ALUop == 2'b10)begin 
+        if(funct7 == 0000001){ // M/D operation detection
+            is_muldiv=1;
+            muldiv_op=funct3;
+        }
+        else begin // regular arithmetic operations
         case(funct3) 
             3'b000 : begin ALU_control = (funct7 == 7'b0100000)?4'b0001:4'b0000; end
             3'b111 : begin ALU_control = 4'b0010; end
@@ -31,6 +38,7 @@ always@(*) begin
             3'b011 : begin ALU_control = 4'b1001; end
             default : ALU_control = 4'b0000;
         endcase
+        end
     end
     else ALU_control = 4'b0000; // safety ADD
 end
