@@ -2,14 +2,11 @@ module ALU(
     input [31:0] A,B,
     input [3:0] opcode,
     output reg [31:0] result,
-    output reg Z,OF,N,sign
+    output reg Z
 );
 
 always@(*) begin
 Z=0;
-OF=0;
-N=0;
-sign=0;
 case(opcode)
     4'b0000 : begin result=A+B; end // ADD
     4'b0001 : begin result=A-B; end // SUB
@@ -25,14 +22,6 @@ case(opcode)
     default : result=32'b0;
 endcase
 Z=(result==32'b0)?1:0;
-sign=result[31];
-N=(result<0)?1:0;
 
-if(opcode==4'b0000)begin
-    OF=(~A[31] & ~B[31] & result[31]) | (A[31] & B[31] & ~result[31]);
-end
-else if(opcode==4'b0001)begin
-    OF=(~A[31] & B[31] & result[31]) | (A[31] & ~B[31] & ~result[31]);
-end
 end
 endmodule
