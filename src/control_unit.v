@@ -21,8 +21,8 @@ always@(*) begin
     case(opcode) 
      7'b0110011 :  begin RegWrite=1;MemWrite=0;MemRead=0;ALUsrc=0;branch=0;ALUop=2'b10;  end // R 
      7'b0010011 :  begin RegWrite=1;MemWrite=0;MemRead=0;ALUsrc=1;branch=0;ALUop=2'b10;  end // I
-     7'b0000011 :  begin RegWrite=1;MemWrite=0;MemRead=1;ALUsrc=1;branch=0;ALUop=2'b10;  end // I
-     7'b1100111 :  begin RegWrite=1;MemWrite=0;MemRead=1;ALUsrc=1;branch=0;ALUop=2'b10;  end // I
+     7'b0000011 :  begin RegWrite=1;MemWrite=0;MemRead=1;ALUsrc=1;branch=0;ALUop=2'b00;  end // I
+     7'b1100111 :  begin RegWrite=1;MemWrite=0;MemRead=0;ALUsrc=1;branch=0;ALUop=2'b00;  end // I
      7'b0100011 :  begin RegWrite=0;MemWrite=1;MemRead=0;ALUsrc=1;branch=0;ALUop=2'b00;  end // S
      7'b1100011 :  begin RegWrite=0;MemWrite=0;MemRead=0;ALUsrc=0;branch=1;ALUop=2'b01;  end // B
      7'b0110111 :  begin RegWrite=1;ALUsrc=1;MemRead=0;MemWrite=0;branch=0;ALUop=2'b00;  end // U
