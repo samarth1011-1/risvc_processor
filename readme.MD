@@ -8,11 +8,11 @@
  │    ├── reg_file.v                (done)
  │    ├── control_unit.v            (done)
  │    ├── alu.v                     (done)
- │    ├── mul_div_unit.v
+ │    ├── mul_div_unit.v            (done)
  │    ├── forwarding_unit.v
  │    ├── hazard_detection.v
  │    ├── branch_predictor.v
- │    ├── data_memory.v
+ │    ├── data_memory.v             (done)
  │    ├── pipeline_registers.v      (done)
  │    ├── top_module.v
  ├── /tb
