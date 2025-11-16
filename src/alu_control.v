@@ -1,45 +1,39 @@
-/*
-ALU control acts as a bridge between control unit and ALU
-it takes the control unit output (ALUop) and assigns the ALU control 
-this takes in funct3 and funct7 into consideration
-funct3 and funct7 helps to differentiate if two instruction have same ALUop
-*/
 module alu_control(
-    input [1:0] ALUop, // Control unit output
-    input [2:0] funct3, // Adds context
-    input [6:0] funct7, // Adds context
-    output reg [3:0] ALU_control ,// This tells the actual ALU to perform specific operations based on the opcode
-    output reg is_muldiv, // is HIGH during multiplication/division operation
-    output reg [2:0] muldiv_op // outputs the funct3 required for mul/div operation
+    input [1:0] ALUop,
+    input [2:0] funct3,
+    input [6:0] funct7,
+    output reg [3:0] ALU_control,
+    output reg is_muldiv,
+    output reg [2:0] muldiv_op
 );
 
-always@(*) begin
-    ALU_control = 4'b0000;is_muldiv=0;muldiv_op=3'b0;
-    if(ALUop == 2'b00)ALU_control = 4'b0000; // ADD
-    else if(ALUop == 2'b01)ALU_control = 4'b0001; // SUB
-    /*
-    Multiple instructions like ADD/SUB and SRL/SRA have same ALUop and funct3 
-    and even funct7
-    */
-    else if(ALUop == 2'b10)begin 
-        if(funct7 == 0000001){ // M/D operation detection
-            is_muldiv=1;
-            muldiv_op=funct3;
-        }
-        else begin // regular arithmetic operations
-        case(funct3) 
-            3'b000 : begin ALU_control = (funct7 == 7'b0100000)?4'b0001:4'b0000; end
-            3'b111 : begin ALU_control = 4'b0010; end
-            3'b110 : begin ALU_control = 4'b0011; end
-            3'b100 : begin ALU_control = 4'b0100; end
-            3'b001 : begin ALU_control = 4'b0101; end
-            3'b101 : begin ALU_control = (funct7 == 7'b0100000)?4'b0111:4'b0110; end
-            3'b010 : begin ALU_control = 4'b1000; end
-            3'b011 : begin ALU_control = 4'b1001; end
-            default : ALU_control = 4'b0000;
-        endcase
+always @(*) begin
+    ALU_control = 4'b0000;
+    is_muldiv = 0;
+    muldiv_op = 3'b000;
+
+    if (ALUop == 2'b00)
+        ALU_control = 4'b0000;
+    else if (ALUop == 2'b01)
+        ALU_control = 4'b0001;
+    else if (ALUop == 2'b10) begin
+        if (funct7 == 7'b0000001) begin
+            is_muldiv = 1;
+            muldiv_op = funct3;
+        end else begin
+            case (funct3)
+                3'b000: ALU_control = (funct7 == 7'b0100000) ? 4'b0001 : 4'b0000;
+                3'b111: ALU_control = 4'b0010;
+                3'b110: ALU_control = 4'b0011;
+                3'b100: ALU_control = 4'b0100;
+                3'b001: ALU_control = 4'b0101;
+                3'b101: ALU_control = (funct7 == 7'b0100000) ? 4'b0111 : 4'b0110;
+                3'b010: ALU_control = 4'b1000;
+                3'b011: ALU_control = 4'b1001;
+                default: ALU_control = 4'b0000;
+            endcase
         end
     end
-    else ALU_control = 4'b0000; // safety ADD
 end
+
 endmodule
