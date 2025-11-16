@@ -3,7 +3,7 @@
 module top_module #(
     parameter IMEM_DEPTH = 12,
     parameter DMEM_DEPTH = 12,
-    parameter IMEM_FILE  = "final_test.hex"
+    parameter IMEM_FILE  = "./programs/final_test.hex"
 )(
     input wire clk,
     input wire rst,
@@ -19,7 +19,7 @@ wire [31:0] pc;
 wire pc_write;
 wire [31:0] next_pc;
 
-program_counter  PC (
+program_counter PC (
     .clk(clk),
     .rst(rst),
     .pc_write(pc_write),
@@ -188,16 +188,21 @@ forwarding_unit FWD (
     .forwardB(fwdB)
 );
 
-// Forwarding muxes
-wire [31:0] alu_in_A = (fwdA==2'b10) ? mem_alu_result :
-                       (fwdA==2'b01) ? wb_data :
+// Forwarding muxes for ALU inputs
+wire [31:0] alu_in_A = (fwdA == 2'b10) ? mem_alu_result :
+                       (fwdA == 2'b01) ? wb_data :
                        ex_rs1_val;
 
-wire [31:0] alu_in_B_pre = (fwdB==2'b10) ? mem_alu_result :
-                           (fwdB==2'b01) ? wb_data :
+wire [31:0] alu_in_B_pre = (fwdB == 2'b10) ? mem_alu_result :
+                           (fwdB == 2'b01) ? wb_data :
                            ex_rs2_val;
 
 wire [31:0] alu_in_B = ex_ALUsrc ? ex_imm : alu_in_B_pre;
+
+// FIX: Forward rs2 for store instructions
+wire [31:0] forwarded_rs2 = (fwdB == 2'b10) ? mem_alu_result :
+                            (fwdB == 2'b01) ? wb_data :
+                            ex_rs2_val;
 
 // ========================= EXECUTE ============================
 
@@ -212,10 +217,22 @@ ALU alu_unit (
     .Z(alu_Z)
 );
 
-// MUL/DIV
+// MUL/DIV with improved start logic
 wire muldiv_busy, muldiv_ready;
 wire [31:0] muldiv_result;
-wire muldiv_start = ex_is_muldiv && !muldiv_busy;
+
+reg muldiv_started;
+
+always @(posedge clk) begin
+    if (rst)
+        muldiv_started <= 1'b0;
+    else if (muldiv_ready)
+        muldiv_started <= 1'b0;
+    else if (ex_is_muldiv && !muldiv_busy && !muldiv_started)
+        muldiv_started <= 1'b1;
+end
+
+wire muldiv_start = ex_is_muldiv && !muldiv_busy && !muldiv_started;
 
 mul_div MULDIV (
     .clk(clk),
@@ -249,7 +266,7 @@ ex_mem_pipeline EX_MEM (
     .enable(1'b1),
     .flush(1'b0),
     .ex_alu_result(ex_final_result),
-    .ex_rs2_val(ex_rs2_val),
+    .ex_rs2_val(forwarded_rs2),        // FIX: Use forwarded rs2
     .ex_rd(ex_rd),
     .ex_RW(ex_RW),
     .ex_MR(ex_MR),
@@ -329,15 +346,16 @@ hazard_detection HAZ (
     .mem_stall()
 );
 
+// FIX: Control signals with branch redirection
 assign id_ex_enable = ~stall;
-assign id_ex_flush  = id_ex_flush_sig;
-assign if_id_flush  = id_ex_flush_sig;
-assign next_pc      = pc + 32'd4;
+assign id_ex_flush  = mem_branch_taken || id_ex_flush_sig;
+assign if_id_flush  = mem_branch_taken || id_ex_flush_sig;
+assign next_pc      = mem_branch_taken ? mem_branch_target : (pc + 32'd4);
 
 // ========================= DEBUG ==============================
 
-assign debug_pc         = pc;
-assign debug_instruction= id_instr;
-assign debug_alu_result = mem_alu_result;
+assign debug_pc          = id_pc;           // Same stage as instruction
+assign debug_instruction = id_instr;
+assign debug_alu_result  = mem_alu_result;
 
 endmodule
