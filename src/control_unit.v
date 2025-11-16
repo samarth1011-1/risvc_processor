@@ -31,24 +31,4 @@ always@(*) begin
      default: begin RegWrite=0;ALUsrc=0;MemRead=0;MemWrite=0;branch=0;ALUop=2'b00; end
     endcase
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 endmodule
