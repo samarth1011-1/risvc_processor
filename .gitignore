@@ -1,3 +1,4 @@
 outputs/
 vcd_files/
 *.log
+programs/

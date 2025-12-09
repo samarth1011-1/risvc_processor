@@ -14,7 +14,9 @@ module ex_mem_pipeline(
     input         ex_branch,
     input  [31:0] ex_branch_target,
     input         ex_branch_taken,
+    input         ex_is_muldiv,
 
+    output reg    mem_is_muldiv,
     output reg [31:0] mem_alu_result,
     output reg [31:0] mem_rs2_val,
     output reg [4:0]  mem_rd,
@@ -29,7 +31,7 @@ always @(posedge clk) begin
     if (rst || flush) begin
         mem_alu_result <= 0; mem_rs2_val <= 0; mem_rd <= 0;
         mem_RW <= 0; mem_MR <= 0; mem_MW <= 0; mem_branch <= 0;
-        mem_branch_target <= 0; mem_branch_taken <= 0;
+        mem_branch_target <= 0; mem_branch_taken <= 0; mem_is_muldiv<=0;
     end else if (enable) begin
         mem_alu_result <= ex_alu_result;
         mem_rs2_val <= ex_rs2_val;
@@ -40,6 +42,7 @@ always @(posedge clk) begin
         mem_branch <= ex_branch;
         mem_branch_target <= ex_branch_target;
         mem_branch_taken <= ex_branch_taken;
+        mem_is_muldiv <= ex_is_muldiv;
     end
 end
 endmodule
