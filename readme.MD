@@ -29,17 +29,6 @@ vvp cpu
 # View waveform
 gtkwave cpu_dump.vcd
 ```
-
-## Test Program
-
-Simple test (`final_test.hex`):
-```
-x1 = 5
-x2 = 10
-x3 = x1 + x2 = 15
-x4 = x1 - x2 = -5
-```
-
 ## Project Structure
 ```
 ├── top_module.v           # Top-level integration
