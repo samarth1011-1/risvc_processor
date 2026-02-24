@@ -27,10 +27,10 @@ gtkwave cpu_dump.vcd
 
 Simple test (`final_test.hex`):
 ```
-addi x1, x0, 10 // x1 = 0+10 = 10 (a)
-addi x2, x0, 5 // x2 = 0+5 = 5
-add x3, x1, x2 // x3 = x1 + x2 = 15 (f)
-sub x4, x1, x2 // x4 = x1 - x2 = 5
+x1 = 5
+x2 = 10
+x3 = x1 + x2 = 15
+x4 = x1 - x2 = -5
 ```
 
 ## Project Structure

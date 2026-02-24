@@ -51,6 +51,20 @@ module tb_top;
         rst = 1;
         #20;         // Hold reset for 2 clock cycles
         rst = 0;
+        $display("Reset released. Processor running...");
+
+        // 2. Run Simulation
+        // Run enough cycles for instructions to pass through 
+        // IF -> ID -> EX (Mul logic) -> MEM -> WB
+        #200; 
+
+        // 3. Print Register Values
+        // Note: 'uut.RF.registers' assumes your internal register array 
+        // inside register_file module is named 'registers'. 
+        // If it is named 'registers' or 'rf', change it below.
+        $display("\n==================================================");
+        $display("   Final Register State (x1 - x5)");
+        $display("==================================================");
         
         $display("Time=%0t: Reset released", $time);
         $display("Starting execution...\n");
