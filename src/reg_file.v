@@ -3,7 +3,7 @@ register file is a set of registers that can be read and written to.
 it has 2 read ports and 1 write port.
 the register file has 32 registers, each 32 bits wide.
 read operation is combinational
-write operation is done on postive edge of the clock
+write operation is done on positive edge of the clock
 */
 
 // Ex: ADD x1(destination), x2(source1), x3(source2)
@@ -23,16 +23,31 @@ module register_file(
 reg [31:0] registers[0:31];
 integer i;
 
-always@(*)begin
-    rs1_data = (rs1_addr ==0)?32'b0:registers[rs1_addr];
-    rs2_data = (rs2_addr ==0)?32'b0:registers[rs2_addr];
+always@(*) begin
+    // rs1 read with write-first forwarding
+    if (rs1_addr == 5'b0)
+        rs1_data = 32'b0;                         // x0 is always 0
+    else if (write_enable && (rd_addr == rs1_addr))
+        rs1_data = rd_data;                       // forward WB data to ID
+    else
+        rs1_data = registers[rs1_addr];
+
+    // rs2 read with write-first forwarding
+    if (rs2_addr == 5'b0)
+        rs2_data = 32'b0;                         // x0 is always 0
+    else if (write_enable && (rd_addr == rs2_addr))
+        rs2_data = rd_data;                       // forward WB data to ID
+    else
+        rs2_data = registers[rs2_addr];
 end
 
-always@(posedge clk)
-begin
-    if(rst)begin
-        for(i=0;i<32;i=i+1) registers[i]<=32'b0;
+always@(posedge clk) begin
+    if (rst) begin
+        for (i = 0; i < 32; i = i + 1)
+            registers[i] <= 32'b0;
     end
-    else if(write_enable && (rd_addr != 5'b0)) registers[rd_addr] <= rd_data;
+    else if (write_enable && (rd_addr != 5'b0))
+        registers[rd_addr] <= rd_data;
 end
+
 endmodule

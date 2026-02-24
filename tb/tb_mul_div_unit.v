@@ -1,94 +1,149 @@
 `timescale 1ns/1ps
 
-module tb_mul_div_unit;
-reg clk, start, rst;
-reg [2:0] opcode;
-reg [31:0] rs1, rs2;
-wire busy, ready;
-wire [31:0] result;
+module mul_div_tb;
 
-// DUT instantiation
-mul_div dut(
-    .clk(clk),
-    .rst(rst),
-    .start(start),
-    .opcode(opcode),
-    .rs1(rs1),
-    .rs2(rs2),
-    .busy(busy),
-    .ready(ready),
-    .result(result)
-);
+    // ----------------------------------------------------------------
+    // DUT signals
+    // ----------------------------------------------------------------
+    reg         clk, rst, start;
+    reg  [2:0]  opcode;
+    reg  [31:0] rs1, rs2;
+    wire        busy, ready;
+    wire [31:0] result;
 
-// Clock generation (20 ns period)
-initial clk = 0;
-always #10 clk = ~clk;
+    // ----------------------------------------------------------------
+    // Instantiate DUT
+    // ----------------------------------------------------------------
+    mul_div dut (
+        .clk    (clk),
+        .rst    (rst),
+        .start  (start),
+        .opcode (opcode),
+        .rs1    (rs1),
+        .rs2    (rs2),
+        .busy   (busy),
+        .ready  (ready),
+        .result (result)
+    );
 
-initial begin
-    // Dump file for GTKWave
-    $dumpfile("vcd_files/muldiv.vcd");
-    $dumpvars(0, tb_mul_div_unit);
+    // ----------------------------------------------------------------
+    // Clock – 10 ns period
+    // ----------------------------------------------------------------
+    initial clk = 0;
+    always #5 clk = ~clk;
 
-    // Display key signals in console
-    $monitor("t=%0t | Rst=%b | Start=%b | Opcode=%b | Busy=%b | Ready=%b | Result=%h",
-             $time, rst, start, opcode, busy, ready, result);
+    // ----------------------------------------------------------------
+    // Helper task: apply one operation and wait for ready
+    // ----------------------------------------------------------------
+    integer test_num;
 
-    // -----------------------------------------
-    // Initialization
-    // -----------------------------------------
-    rst = 1; start = 0; opcode = 3'b000; rs1 = 0; rs2 = 0;
-    #20 rst = 0;
+    task run_op;
+        input [2:0]  op;
+        input [31:0] a, b;
+        input [63:0] expected;   // 64-bit so we can pass large hex easily
+        input [127:0] op_name;   // text label (up to 16 chars)
+        begin
+            @(negedge clk);
+            opcode = op;
+            rs1    = a;
+            rs2    = b;
+            start  = 1;
+            @(negedge clk);
+            start  = 0;
+            @(negedge clk);
+            // Wait for ready (or timeout after 100 cycles)
+            begin : wait_block
+                integer timeout;
+                timeout = 0;
+                while (!ready && timeout < 100) begin
+                    @(posedge clk);
+                    timeout = timeout + 1;
+                end
+            end
 
-    // -----------------------------------------
-    // MULTIPLICATION OPERATIONS (single-cycle)
-    // -----------------------------------------
-    rs1 = 32'd10; rs2 = 32'd10;
+            @(negedge clk); // settle
 
-    #5  opcode = 3'b000; start = 1;   // MUL
-    #20 start = 0;                    // pulse width 20 ns
-    #20;                              // idle between ops
+            test_num = test_num + 1;
+            $write("Test %0d  %-8s  rs1=%0d  rs2=%0d  =>  result=0x%08X (%0d)",
+                   test_num, op_name, $signed(a), $signed(b), result, $signed(result));
 
-    #5  opcode = 3'b001; start = 1;   // MULH
-    #20 start = 0;
-    #20;
+            if (result === expected[31:0])
+                $display("   PASS");
+            else
+                $display("   FAIL  (expected 0x%08X / %0d)", expected[31:0], $signed(expected[31:0]));
 
-    #5  opcode = 3'b010; start = 1;   // MULHSU
-    #20 start = 0;
-    #20;
+            // One idle cycle between tests
+            @(negedge clk);
+        end
+    endtask
 
-    #5  opcode = 3'b011; start = 1;   // MULHU
-    #20 start = 0;
-    #40;                              // longer idle before DIVs
+    // ----------------------------------------------------------------
+    // Stimulus
+    // ----------------------------------------------------------------
+    initial begin
+        test_num = 0;
+        rst   = 1;
+        start = 0;
+        opcode = 0; rs1 = 0; rs2 = 0;
+        repeat(3) @(posedge clk);
+        @(negedge clk);
+        rst = 0;
 
-    // -----------------------------------------
-    // DIVISION / REMAINDER OPERATIONS (multi-cycle)
-    // -----------------------------------------
-    rs1 = 32'd100; rs2 = 32'd7;
+        $display("============================================================");
+        $display("              MUL/DIV Unit Testbench");
+        $display("  opcode 000=MUL  001=MULH  010=MULHSU  011=MULHU");
+        $display("         100=DIV  101=DIVU  110=REM     111=REMU");
+        $display("============================================================");
 
-    // DIV
-    #5  opcode = 3'b100; start = 1;
-    #20 start = 0;
-    wait(ready);  #20;
+        // ---- MUL (opcode 000) lower 32 bits ----
+        run_op(3'b000, 32'd15,        32'd10,        64'd150,          "MUL     ");
+        run_op(3'b000, -32'd7,        32'd3,         -32'd21,          "MUL     ");
+        run_op(3'b000, 32'hFFFFFFFF,  32'hFFFFFFFF,  32'd1,            "MUL     "); // (-1)*(-1) low=1
 
-    // DIVU
-    #5  opcode = 3'b101; start = 1;
-    #20 start = 0;
-    wait(ready);  #20;
+        // ---- MULH (opcode 001) signed high 32 bits ----
+        // 0x80000000 * 0x80000000 = 0x4000_0000_0000_0000 => high = 0x40000000
+        run_op(3'b001, 32'h80000000, 32'h80000000, 64'h40000000,      "MULH    ");
+        run_op(3'b001, -32'd1,       -32'd1,        32'd0,             "MULH    "); // 1 >> 32 = 0
 
-    // REM
-    #5  opcode = 3'b110; start = 1;
-    #20 start = 0;
-    wait(ready);  #20;
+        // ---- MULHSU (opcode 010) rs1 signed, rs2 unsigned ----
+        run_op(3'b010, -32'd1,  32'd1, 32'hFFFFFFFF,                   "MULHSU  "); // -1 * 1 >> 32 = -1
 
-    // REMU
-    #5  opcode = 3'b111; start = 1;
-    #20 start = 0;
-    wait(ready);  #40;  // extra delay to observe final state
+        // ---- MULHU (opcode 011) unsigned high 32 bits ----
+        run_op(3'b011, 32'hFFFFFFFF, 32'hFFFFFFFF, 32'hFFFFFFFE,      "MULHU   "); // (2^32-1)^2 >> 32
 
-    // -----------------------------------------
-    // End simulation
-    // -----------------------------------------
-    $display("Simulation complete at t=%0t", $time);
-    #20 $finish;
-end
+        // ---- DIV (opcode 100) signed division ----
+        run_op(3'b100, 32'd20,        32'd3,         32'd6,            "DIV     ");
+        run_op(3'b100, -32'd20,       32'd3,         -32'd6,           "DIV     ");
+        run_op(3'b100, -32'd20,       -32'd3,        32'd6,            "DIV     ");
+        run_op(3'b100, 32'd7,         32'd0,         32'hFFFFFFFF,     "DIV/0   "); // divide by zero
+        run_op(3'b100, 32'h80000000,  32'hFFFFFFFF,  32'h80000000,    "DIV ovfl"); // overflow corner
+
+        // ---- DIVU (opcode 101) unsigned division ----
+        run_op(3'b101, 32'd100,       32'd7,         32'd14,           "DIVU    ");
+        run_op(3'b101, 32'hFFFFFFFE,  32'd2,         32'h7FFFFFFF,    "DIVU    ");
+        run_op(3'b101, 32'd5,         32'd0,         32'hFFFFFFFF,    "DIVU/0  "); // divide by zero
+
+        // ---- REM (opcode 110) signed remainder ----
+        run_op(3'b110, 32'd20,        32'd3,         32'd2,            "REM     ");
+        run_op(3'b110, -32'd20,       32'd3,         -32'd2,           "REM     ");
+        run_op(3'b110, 32'd7,         32'd0,         32'd7,            "REM/0   "); // dividend returned
+
+        // ---- REMU (opcode 111) unsigned remainder ----
+        run_op(3'b111, 32'd20,        32'd3,         32'd2,            "REMU    ");
+        run_op(3'b111, 32'hFFFFFFFF,  32'd10,        32'd5,            "REMU    "); // 4294967295 % 10 = 5
+        run_op(3'b111, 32'd7,         32'd0,         32'd7,            "REMU/0  "); // dividend returned
+
+        $display("============================================================");
+        $display("All tests complete.");
+        $finish;
+    end
+
+    // ----------------------------------------------------------------
+    // Optional waveform dump
+    // ----------------------------------------------------------------
+    initial begin
+        $dumpfile("mul_div_tb.vcd");
+        $dumpvars(0, mul_div_tb);
+    end
+
 endmodule

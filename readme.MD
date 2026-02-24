@@ -6,17 +6,10 @@ A hardware implementation of a pipelined RISC-V processor supporting the RV32IM 
 
 - **5-stage pipeline** (IF → ID → EX → MEM → WB)
 - **Data forwarding** to minimize pipeline stalls
-- **Hazard detection** for load-use conflicts
+- **Hazard detection** for load-use conflicts (**in testing**)
 - **Multiply/Divide unit** (M extension support)
-- **Branch handling** with pipeline flush
-
-## Architecture
-
-The processor uses a classic datapath-controller separation:
-- **Datapath**: ALU, registers, memory, pipeline registers
-- **Controller**: FSM-based control unit with hazard detection and forwarding
-
-Pipeline stages complete one instruction per cycle after initial fill, achieving ~5× speedup over single-cycle design.
+- **Branch handling** with pipeline flush (**in testing**)
+    
 
 ## Quick Start
 ```bash
@@ -34,10 +27,10 @@ gtkwave cpu_dump.vcd
 
 Simple test (`final_test.hex`):
 ```
-x1 = 5
-x2 = 10
-x3 = x1 + x2 = 15
-x4 = x1 - x2 = -5
+addi x1, x0, 10 // x1 = 0+10 = 10 (a)
+addi x2, x0, 5 // x2 = 0+5 = 5
+add x3, x1, x2 // x3 = x1 + x2 = 15 (f)
+sub x4, x1, x2 // x4 = x1 - x2 = 5
 ```
 
 ## Project Structure
@@ -68,8 +61,8 @@ x4 = x1 - x2 = -5
 
 ✓ Arithmetic (ADD, SUB, MUL, DIV)  
 ✓ Logic (AND, OR, XOR)  
-✓ Shifts (SLL, SRL, SRA)  
 ✓ Memory (LW, SW)  
-✓ Branches (BEQ, BNE)
+X Shifts (SLL, SRL, SRA)  (**under testing**)
+X Branches (BEQ, BNE)     (**under testing**)
 
 Built as a learning project to understand processor architecture and pipeline design.

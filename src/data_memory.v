@@ -11,6 +11,7 @@ module data_memory #(
 );
 
     reg [31:0] mem [0:DEPTH-1];
+    wire [31:0] word_addr = addr_i >> 2;
     integer i;
 
     always @(posedge clk) begin
@@ -18,14 +19,14 @@ module data_memory #(
             for (i = 0; i < DEPTH; i = i + 1)
                 mem[i] <= 32'b0;
         end
-        else if (MemWrite) begin
-            mem[addr_i >> 2] <= write_data_i;
+        else if (MemWrite && (word_addr < DEPTH)) begin
+            mem[word_addr] <= write_data_i;
         end
     end
 
     always @(*) begin
-        if (MemRead)
-            read_data_o = mem[addr_i >> 2];
+        if (MemRead && (word_addr < DEPTH))
+            read_data_o = mem[word_addr];
         else
             read_data_o = 32'b0;
     end
