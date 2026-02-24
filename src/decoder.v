@@ -27,6 +27,7 @@ module decoder(
         case(opcode)
             7'b0010011 : imm = {{20{instr_input[31]}}, instr_input[31:20]}; // I-type
             7'b0000011 : imm = {{20{instr_input[31]}}, instr_input[31:20]}; // I-type - load
+            7'b1100111 : imm = {{20{instr_input[31]}}, instr_input[31:20]}; // I-type - jalr
             7'b0100011 : imm = {{20{instr_input[31]}},instr_input[31:25],instr_input[11:7]}; // S-type
             7'b1100011 : imm = {{19{instr_input[31]}},instr_input[31],instr_input[7],instr_input[30:25],instr_input[11:8],1'b0}; // B-type
             7'b1101111 : imm = {{11{instr_input[31]}},instr_input[31],instr_input[30:21],instr_input[20],instr_input[19:12],1'b0}; //J-type

@@ -3,7 +3,7 @@
 module top_module #(
     parameter IMEM_DEPTH = 12,
     parameter DMEM_DEPTH = 12,
-    parameter IMEM_FILE  = "./programs/divide.hex"
+    parameter IMEM_FILE  = "./programs/final_test.hex"
 )(
     input wire clk,
     input wire rst,
@@ -16,13 +16,14 @@ module top_module #(
 // ========================= IF STAGE =========================
 
 wire [31:0] pc;
-wire pc_write;
+wire pc_write_haz;
+wire pc_write_eff;
 wire [31:0] next_pc;
 
 program_counter PC (
     .clk(clk),
     .rst(rst),
-    .pc_write(pc_write),
+    .pc_write(pc_write_eff),
     .next_pc(next_pc),
     .pc_out(pc)
 );
@@ -44,6 +45,7 @@ wire [31:0] id_pc;
 wire [31:0] id_instr;
 wire if_id_write;
 wire if_id_flush;
+wire branch_flush;
 
 if_id_pipeline IF_ID (
     .clk(clk),
@@ -92,10 +94,9 @@ control_unit CU (
 );
 
 wire [31:0] rs1_data, rs2_data;
-
 wire [31:0] wb_data;
-wire [4:0] wb_rd;
-wire wb_RegWrite;
+wire [4:0]  wb_rd;
+wire        wb_RegWrite;
 
 register_file RF (
     .clk(clk),
@@ -111,11 +112,13 @@ register_file RF (
 
 // ALU control
 wire [3:0] alu_control;
-wire is_muldiv;
+wire       is_muldiv;
 wire [2:0] muldiv_op;
 
 alu_control ALUCTRL (
     .ALUop(cu_ALUop),
+    .opcode(id_opcode),      // FIX 1: pass opcode so alu_control can
+                             //        distinguish R-type SUB from I-type ADDI
     .funct3(id_funct3),
     .funct7(id_funct7),
     .ALU_control(alu_control),
@@ -126,20 +129,23 @@ alu_control ALUCTRL (
 // ========================= ID/EX ============================
 
 wire id_ex_enable;
-wire id_ex_flush;
+wire id_ex_flush_sig; // FIX 2: removed the dangling 'wire id_ex_flush'
+                      //        that was shadowing id_ex_flush_sig from HAZ
 
 wire [31:0] ex_pc, ex_rs1_val, ex_rs2_val, ex_imm;
-wire [4:0] ex_rd, ex_rs1, ex_rs2;
-wire ex_RW, ex_MR, ex_MW, ex_branch, ex_ALUsrc, ex_is_muldiv;
-wire [3:0] ex_alu_sel;
-wire [2:0] ex_muldiv_op;
+wire [4:0]  ex_rd, ex_rs1, ex_rs2;
+wire        ex_RW, ex_MR, ex_MW, ex_branch, ex_ALUsrc, ex_is_muldiv;
+wire [3:0]  ex_alu_sel;
+wire [2:0]  ex_funct3, ex_muldiv_op;
+
 
 id_ex_pipeline ID_EX (
     .clk(clk),
     .rst(rst),
     .enable(id_ex_enable),
-    .flush(id_ex_flush),
+    .flush(id_ex_flush_final), 
 
+    .id_funct3(id_funct3),                       
     .id_pc(id_pc),
     .id_rs1_val(rs1_data),
     .id_rs2_val(rs2_data),
@@ -157,6 +163,7 @@ id_ex_pipeline ID_EX (
     .id_muldiv_op(muldiv_op),
 
     .ex_pc(ex_pc),
+    .ex_funct3(ex_funct3),
     .ex_rs1_val(ex_rs1_val),
     .ex_rs2_val(ex_rs2_val),
     .ex_imm(ex_imm),
@@ -199,7 +206,6 @@ wire [31:0] alu_in_B_pre = (fwdB == 2'b10) ? mem_alu_result :
 
 wire [31:0] alu_in_B = ex_ALUsrc ? ex_imm : alu_in_B_pre;
 
-// FIX: Forward rs2 for store instructions
 wire [31:0] forwarded_rs2 = (fwdB == 2'b10) ? mem_alu_result :
                             (fwdB == 2'b01) ? wb_data :
                             ex_rs2_val;
@@ -207,7 +213,7 @@ wire [31:0] forwarded_rs2 = (fwdB == 2'b10) ? mem_alu_result :
 // ========================= EXECUTE ============================
 
 wire [31:0] alu_result;
-wire alu_Z;
+wire        alu_Z;
 
 ALU alu_unit (
     .A(alu_in_A),
@@ -217,10 +223,8 @@ ALU alu_unit (
     .Z(alu_Z)
 );
 
-// MUL/DIV with proper stalling
 wire muldiv_busy, muldiv_ready;
 wire [31:0] muldiv_result;
-
 wire muldiv_start = ex_is_muldiv && !muldiv_busy && !muldiv_ready;
 
 mul_div MULDIV (
@@ -235,46 +239,48 @@ mul_div MULDIV (
     .result(muldiv_result)
 );
 
-// Hold the result when ready, keep it until next operation
 reg [31:0] muldiv_result_held;
-reg result_valid;
+reg        result_valid;
 
 always @(posedge clk) begin
     if (rst) begin
         muldiv_result_held <= 0;
-        result_valid <= 0;
+        result_valid       <= 0;
     end else if (muldiv_ready) begin
-        // Capture result when ready
         muldiv_result_held <= muldiv_result;
-        result_valid <= 1;
+        result_valid       <= 1;
     end else if (!ex_is_muldiv) begin
-        // Clear when no muldiv instruction in EX stage
         result_valid <= 0;
     end
 end
 
-// Use held result if valid, otherwise use current result if ready
-wire [31:0] ex_final_result = ex_is_muldiv ? 
-                              (result_valid ? muldiv_result_held : 
-                               muldiv_ready ? muldiv_result : 0) : 
+wire [31:0] ex_final_result = ex_is_muldiv ?
+                              (result_valid  ? muldiv_result_held :
+                               muldiv_ready  ? muldiv_result : 0) :
                               alu_result;
 
-// Branch calculation
 wire [31:0] ex_branch_target = ex_pc + ex_imm;
-wire ex_branch_taken = ex_branch && alu_Z;
+reg ex_branch_taken;
+always @(*) begin
+    case (ex_funct3)
+        3'b000: ex_branch_taken = ex_branch && alu_Z;     // BEQ
+        3'b001: ex_branch_taken = ex_branch && !alu_Z;    // BNE
+        default: ex_branch_taken = 1'b0;
+    endcase
+end
 
 // ========================= EX/MEM ============================
 
 wire [31:0] mem_alu_result, mem_rs2_val;
-wire [4:0] mem_rd;
-wire mem_RW, mem_MR, mem_MW, mem_branch;
+wire [4:0]  mem_rd;
+wire        mem_RW, mem_MR, mem_MW, mem_branch;
 wire [31:0] mem_branch_target;
-wire mem_branch_taken;
+wire        mem_branch_taken;
 
-// Forward declare pipeline_enable for use in EX_MEM
-wire stall, id_ex_flush_sig;
-wire muldiv_stall = ex_is_muldiv && !muldiv_ready;
+wire stall;
+wire muldiv_stall    = ex_is_muldiv && !muldiv_ready;
 wire pipeline_enable = ~stall && ~muldiv_stall;
+wire id_ex_flush_final;
 
 ex_mem_pipeline EX_MEM (
     .clk(clk),
@@ -301,7 +307,7 @@ ex_mem_pipeline EX_MEM (
     .mem_branch(mem_branch),
     .mem_branch_target(mem_branch_target),
     .mem_branch_taken(mem_branch_taken),
-    .mem_is_muldiv()  // Not used, but module has this output
+    .mem_is_muldiv()
 );
 
 // ========================= MEMORY ============================
@@ -323,12 +329,12 @@ data_memory #(
 // ========================= MEM/WB ============================
 
 wire [31:0] wb_alu_result, wb_read_data;
-wire wb_MR;
+wire        wb_MR;
 
 mem_wb_pipeline MEM_WB (
     .clk(clk),
     .rst(rst),
-    .enable(1'b1),
+    .enable(pipeline_enable),   
     .flush(1'b0),
     .mem_alu_result(mem_alu_result),
     .mem_read_data(mem_read_data),
@@ -358,15 +364,18 @@ hazard_detection HAZ (
     .muldiv_busy(muldiv_busy),
     .muldiv_ready(muldiv_ready),
     .stall(stall),
-    .pc_write(pc_write),
+    .pc_write(pc_write_haz),
     .if_id_write(if_id_write),
     .id_ex_flush(id_ex_flush_sig),
     .mem_stall()
 );
 
 // Pipeline control signals
+assign branch_flush = mem_branch_taken;
+assign pc_write_eff = pc_write_haz;
 assign id_ex_enable = pipeline_enable;
-assign if_id_flush  = mem_branch_taken || (id_ex_flush_sig && !muldiv_stall);
+assign id_ex_flush_final = id_ex_flush_sig || mem_branch_taken;
+assign if_id_flush  = mem_branch_taken;
 assign next_pc      = mem_branch_taken ? mem_branch_target : (pc + 32'd4);
 
 // ========================= DEBUG ==============================

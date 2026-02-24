@@ -7,14 +7,17 @@ module instruction_memory #(
     output reg [31:0] instr_o            // output
 );
 reg [31:0] mem[0:DEPTH-1];               // this stores the hexadecimal instructions from the file which are used to execute the program
+wire [31:0] word_addr = addr_i >> 2;
 
 initial begin
     $readmemh(IN_FILE, mem);             //  read the hex file and store it in the mem variable
 end
     
     always@(*)begin
-        if(enable) instr_o = mem[addr_i >> 2];
-        else instr_o = 32'h00000013;
+        if (enable && (word_addr < DEPTH))
+            instr_o = mem[word_addr];
+        else
+            instr_o = 32'h00000013;
     end
 endmodule
 

@@ -19,14 +19,20 @@ reg [2:0] state;
 reg [31:0] dividend, divisor, quotient, remainder;
 reg [5:0] count;
 reg signA, signB;
-reg [31:0] mul_result;
+reg[31:0] mul_result;
+reg signed [63:0] mulh_ss;
+reg signed [63:0] mulh_su;
+reg        [63:0] mulh_uu;
 
 always @(*) begin
+    mulh_ss = $signed(rs1) * $signed(rs2);
+    mulh_su = $signed(rs1) * $signed({1'b0, rs2});
+    mulh_uu = {1'b0, rs1}  * {1'b0, rs2};
     case (opcode)
         3'b000: mul_result = rs1 * rs2;
-        3'b001: mul_result = ($signed(rs1) * $signed(rs2)) >> 32;
-        3'b010: mul_result = ($signed(rs1) * $unsigned(rs2)) >> 32;
-        3'b011: mul_result = ($unsigned(rs1) * $unsigned(rs2)) >> 32;
+        3'b001: mul_result = mulh_ss[63:32];
+        3'b010: mul_result = mulh_su[63:32];
+        3'b011: mul_result = mulh_uu[63:32];
         default: mul_result = 0;
     endcase
 end

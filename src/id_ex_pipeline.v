@@ -20,7 +20,9 @@ module id_ex_pipeline(
     input         id_is_muldiv,
     input  [3:0]  id_alu_sel,
     input  [2:0]  id_muldiv_op,
+    input [2:0] id_funct3,
 
+    output reg [2:0] ex_funct3,
     output reg [31:0] ex_pc,
     output reg [31:0] ex_rs1_val,
     output reg [31:0] ex_rs2_val,
@@ -43,7 +45,7 @@ always @(posedge clk) begin
         ex_rd <= 0; ex_rs1 <= 0; ex_rs2 <= 0;
         ex_RW <= 0; ex_MR <= 0; ex_MW <= 0;
         ex_branch <= 0; ex_ALUsrc <= 0; ex_is_muldiv <= 0;
-        ex_alu_sel <= 0; ex_muldiv_op <= 0;
+        ex_alu_sel <= 0; ex_muldiv_op <= 0; ex_funct3 <= 0;
     end else if (enable) begin
         ex_pc <= id_pc;
         ex_rs1_val <= id_rs1_val;
@@ -60,6 +62,7 @@ always @(posedge clk) begin
         ex_is_muldiv <= id_is_muldiv;
         ex_alu_sel <= id_alu_sel;
         ex_muldiv_op <= id_muldiv_op;
+        ex_funct3 <= id_funct3;
     end
 end
 endmodule

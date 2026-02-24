@@ -2,56 +2,54 @@
 
 module tb_top;
 
-    // Parameters
-    parameter IMEM_DEPTH = 128; // Increased depth for testing
-    parameter DMEM_DEPTH = 128;
-    parameter IMEM_FILE  = "multiply.hex"; // Ensure this file exists
-
-    // Inputs
+    // ============================================================
+    // 1. Signal Declaration
+    // ============================================================
     reg clk;
     reg rst;
-
-    // Outputs
+    
+    // Wire signals to connect to the DUT (Device Under Test)
+    // NOTE: Ensure these match the output ports of your top_module
     wire [31:0] debug_pc;
     wire [31:0] debug_instruction;
     wire [31:0] debug_alu_result;
 
-    // Integer for loops
-    integer i;
-
-    // Instantiate the Unit Under Test (UUT)
-    top_module #(
-        .IMEM_DEPTH(IMEM_DEPTH),
-        .DMEM_DEPTH(DMEM_DEPTH),
-        .IMEM_FILE(IMEM_FILE)
-    ) uut (
-        .clk(clk), 
-        .rst(rst), 
-        .debug_pc(debug_pc), 
-        .debug_instruction(debug_instruction), 
+    // ============================================================
+    // 2. DUT Instantiation
+    // ============================================================
+    // Make sure 'top_module' matches the exact name of your processor module
+    top_module cpu (
+        .clk(clk),
+        .rst(rst),
+        // If your design does not have these debug ports, remove these lines:
+        .debug_pc(debug_pc),
+        .debug_instruction(debug_instruction),
         .debug_alu_result(debug_alu_result)
     );
 
-    // Clock Generation (10ns period -> 100MHz)
+    // ============================================================
+    // 3. Clock Generation (100 MHz)
+    // ============================================================
     initial begin
         clk = 0;
-        forever #5 clk = ~clk;
+        forever #5 clk = ~clk; // Toggle every 5ns = 10ns period
     end
 
-    // Test Sequence
+    // ============================================================
+    // 4. Test Stimulus
+    // ============================================================
     initial begin
-        // 1. Initialize and Reset
-        $display("==================================================");
-        $display("   RISC-V Pipelined Processor Testbench Start");
-        $display("==================================================");
-        
-        // Dump waves for debugging (Optional)
-        $dumpfile("cpu_wave.vcd");
+        // Optional: Vivado handles waveforms automatically, but this is fine to keep
+        $dumpfile("waveform.vcd");
         $dumpvars(0, tb_top);
-
-        rst = 1;
-        #20; // Hold reset for 2 cycles
         
+        $display("\n========================================");
+        $display("    RISC-V CPU Testbench");
+        $display("========================================\n");
+        
+        // --- Reset Sequence ---
+        rst = 1;
+        #20;         // Hold reset for 2 clock cycles
         rst = 0;
         $display("Reset released. Processor running...");
 
@@ -68,31 +66,54 @@ module tb_top;
         $display("   Final Register State (x1 - x5)");
         $display("==================================================");
         
-        // Print x1 (Multiplier A)
-        $display("x1: %0d (Expected: 5)", uut.RF.registers[1]);
+        $display("Time=%0t: Reset released", $time);
+        $display("Starting execution...\n");
         
-        // Print x2 (Multiplier B)
-        $display("x2: %0d (Expected: 10)", uut.RF.registers[2]);
+        // --- Run Simulation ---
+        // Adjust this duration based on how long your program takes
+        #1000; 
         
-        // Print x3 (Result)
-        $display("x3: %0d (Expected: 50)", uut.RF.registers[3]);
+        // --- End of Simulation ---
+        display_register_file(); // Call the task to print registers
         
-        // Print x4 (Unused/Zero)
-        $display("x4: %0d", uut.RF.registers[4]);
-        
-        // Print x5 (Unused/Zero)
-        $display("x5: %0d", uut.RF.registers[5]);
-
-        $display("==================================================");
-
+        $display("\nSimulation Finished.");
         $finish;
     end
-
-    // Optional: Monitor PC changes to see progress
+    
+    // ============================================================
+    // 5. Monitor Execution (PC Logging)
+    // ============================================================
     always @(posedge clk) begin
         if (!rst) begin
-            //$display("Time: %0t | PC: %h | Instr: %h", $time, debug_pc, debug_instruction);
+            // Prints the PC and Instruction every cycle to the Tcl Console
+            $display("Time=%0t | PC=0x%h | Instr=0x%h | ALU_Res=0x%h", 
+                     $time, debug_pc, debug_instruction, debug_alu_result);
         end
     end
+
+    // ============================================================
+    // 6. Task: Display Register File
+    // ============================================================
+    // CRITICAL: Check your hierarchy!
+    // If your register file instance is named 'rf' instead of 'RF', change it below.
+    // If your memory array is named 'regs' instead of 'registers', change it below.
+    task display_register_file;
+        integer i;
+        begin
+            $display("\n========================================");
+            $display("    Final Register Values (x0 - x31)");
+            $display("========================================");
+            
+            // Note: Vivado might warn if it can't find this path. 
+            // Ensure 'cpu' (instantiation name) -> 'RF' (sub-module name) -> 'registers' (array name) exists.
+            
+            for (i = 0; i < 32; i = i + 1) begin
+                // Using $peek or direct hierarchical access
+                $display("x%0d \t= 0x%h", i, cpu.RF.registers[i]);
+            end
+            
+            $display("========================================\n");
+        end
+    endtask
 
 endmodule
