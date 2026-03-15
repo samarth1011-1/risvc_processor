@@ -1,88 +1,92 @@
 module branch_predictor #(
-    parameter PC_WIDTH = 32,
+    parameter PC_WIDTH   = 32,
     parameter INDEX_BITS = 10
 )(
-    input clk,
-    input rst,
-    input [PC_WIDTH-1:0] pc_fetch,
-    output predict_taken,
-    output [PC_WIDTH-1:0] predict_target,
-    output [PC_WIDTH-1:0] predict_pc,
-    input resolve_valid,
-    input [PC_WIDTH-1:0] resolve_pc,
-    input resolve_taken,
-    input [PC_WIDTH-1:0] resolve_target,
-    output mispredict,
-    output [PC_WIDTH-1:0] redirect_pc
+    input  wire                  clk,
+    input  wire                  rst,
+
+    // Fetch port — inputs current PC, outputs prediction
+    input  wire [PC_WIDTH-1:0]   pc_fetch,
+    output wire                  predict_taken,
+    output wire [PC_WIDTH-1:0]   predict_target,
+    output wire [PC_WIDTH-1:0]   predict_pc,
+
+    // Resolve port — EX stage tells us actual outcome
+    input  wire                  resolve_valid,
+    input  wire [PC_WIDTH-1:0]   resolve_pc,
+    input  wire                  resolve_taken,
+    input  wire [PC_WIDTH-1:0]   resolve_target,
+
+    // Mispredict signal — tells pipeline to flush
+    output wire                  mispredict,
+    output wire [PC_WIDTH-1:0]   redirect_pc
 );
 
-localparam ENTRIES = (1 << INDEX_BITS);
-localparam IDX_LSB = 2;
-localparam IDX_MSB = INDEX_BITS + 1;
-localparam TAG_LSB = IDX_MSB + 1;
-localparam TAG_MSB = PC_WIDTH - 1;
-localparam TAG_WIDTH = (PC_WIDTH > (IDX_MSB + 1)) ? (PC_WIDTH - (IDX_MSB + 1)) : 1;
+    // Parameters
+    localparam ENTRIES    = 1 << INDEX_BITS;   // 1024
+    localparam IDX_LO     = 2;                 // skip [1:0], always 00
+    localparam IDX_HI     = INDEX_BITS + 1;    // = 11
+    localparam TAG_LO     = IDX_HI + 1;        // = 12
+    localparam TAG_WIDTH  = PC_WIDTH - TAG_LO; // = 20
 
-integer i;
+    // Storage
+    reg [1:0]          bht         [0:ENTRIES-1]; // 2-bit saturating counters
+    reg [PC_WIDTH-1:0] btb_target  [0:ENTRIES-1]; // predicted targets
+    reg [TAG_WIDTH-1:0] btb_tag    [0:ENTRIES-1]; // tags for alias detection
+    reg                btb_valid   [0:ENTRIES-1]; // valid bits
 
-reg [1:0] bht[0:ENTRIES-1];
-reg [PC_WIDTH-1:0] btb_target[0:ENTRIES-1];
-reg [TAG_WIDTH-1:0] btb_tag[0:ENTRIES-1];
-reg valid_entry[0:ENTRIES-1];
+    integer i;
 
-wire [INDEX_BITS-1:0] fetch_index;
-wire [TAG_WIDTH-1:0] fetch_tag;
-assign fetch_index = pc_fetch[IDX_MSB:IDX_LSB];
-assign fetch_tag = (TAG_WIDTH > 0) ? pc_fetch[PC_WIDTH-1:IDX_MSB+1] : {TAG_WIDTH{1'b0}};
+    // Index and tag extraction
+    wire [INDEX_BITS-1:0] fetch_idx = pc_fetch[IDX_HI:IDX_LO];
+    wire [TAG_WIDTH-1:0]  fetch_tag = pc_fetch[PC_WIDTH-1:TAG_LO];
 
-wire [INDEX_BITS-1:0] res_index;
-wire [TAG_WIDTH-1:0] res_tag;
-assign res_index = resolve_pc[IDX_MSB:IDX_LSB];
-assign res_tag = (TAG_WIDTH > 0) ? resolve_pc[PC_WIDTH-1:IDX_MSB+1] : {TAG_WIDTH{1'b0}};
+    wire [INDEX_BITS-1:0] res_idx   = resolve_pc[IDX_HI:IDX_LO];
+    wire [TAG_WIDTH-1:0]  res_tag   = resolve_pc[PC_WIDTH-1:TAG_LO];
 
-wire [1:0] bht_fetch_val;
-wire btb_hit_fetch;
-assign bht_fetch_val = bht[fetch_index];
-assign btb_hit_fetch = valid_entry[fetch_index] && (btb_tag[fetch_index] == fetch_tag);
+    // Fetch side — predict
+    wire btb_hit     = btb_valid[fetch_idx] && (btb_tag[fetch_idx] == fetch_tag);
+    wire bht_taken   = (bht[fetch_idx] >= 2'b10); // Weakly or Strongly Taken
 
-assign predict_taken = btb_hit_fetch && (bht_fetch_val >= 2'b10);
-assign predict_target = btb_target[fetch_index];
-assign predict_pc = predict_taken ? btb_target[fetch_index] : (pc_fetch + 32'd4);
+    assign predict_taken  = btb_hit && bht_taken;
+    assign predict_target = btb_target[fetch_idx];
+    assign predict_pc     = predict_taken ? predict_target : (pc_fetch + 32'd4);
 
-wire [1:0] bht_res_val;
-wire btb_hit_res;
-wire res_pred_taken;
-wire [PC_WIDTH-1:0] res_pred_target;
-assign bht_res_val = bht[res_index];
-assign btb_hit_res = valid_entry[res_index] && (btb_tag[res_index] == res_tag);
-assign res_pred_taken = btb_hit_res && (bht_res_val >= 2'b10);
-assign res_pred_target = btb_target[res_index];
+    // Resolve side — was our prediction correct?
+    wire res_btb_hit      = btb_valid[res_idx] && (btb_tag[res_idx] == res_tag);
+    wire res_pred_taken   = res_btb_hit && (bht[res_idx] >= 2'b10);
+    wire res_target_wrong = res_pred_taken && (btb_target[res_idx] != resolve_target);
 
-assign mispredict = resolve_valid && ((res_pred_taken != resolve_taken) || (res_pred_taken && (res_pred_target != resolve_target)));
-assign redirect_pc = resolve_taken ? resolve_target : (resolve_pc + 32'd4);
+    assign mispredict   = resolve_valid && ((res_pred_taken != resolve_taken) || res_target_wrong);
+    assign redirect_pc  = resolve_taken ? resolve_target : (resolve_pc + 32'd4);
 
-always @(posedge clk) begin
-    if (rst) begin
-        for (i = 0; i < ENTRIES; i = i + 1) begin
-            bht[i] <= 2'b01;
-            btb_target[i] <= {PC_WIDTH{1'b0}};
-            btb_tag[i] <= {TAG_WIDTH{1'b0}};
-            valid_entry[i] <= 1'b0;
-        end
-    end else if (resolve_valid) begin
-        case (bht[res_index])
-            2'b00: bht[res_index] <= resolve_taken ? 2'b01 : 2'b00;
-            2'b01: bht[res_index] <= resolve_taken ? 2'b10 : 2'b00;
-            2'b10: bht[res_index] <= resolve_taken ? 2'b11 : 2'b01;
-            2'b11: bht[res_index] <= resolve_taken ? 2'b11 : 2'b10;
-            default: bht[res_index] <= 2'b01;
-        endcase
-        if (resolve_taken) begin
-            btb_target[res_index] <= resolve_target;
-            btb_tag[res_index] <= res_tag;
-            valid_entry[res_index] <= 1'b1;
+    // Update — BHT and BTB on resolve
+    always @(posedge clk) begin
+        if (rst) begin
+            for (i = 0; i < ENTRIES; i = i + 1) begin
+                bht[i]        <= 2'b01; // init to Weakly Not Taken
+                btb_target[i] <= {PC_WIDTH{1'b0}};
+                btb_tag[i]    <= {TAG_WIDTH{1'b0}};
+                btb_valid[i]  <= 1'b0;
+            end
+        end else if (resolve_valid) begin
+
+            // BHT: saturating counter update
+            case (bht[res_idx])
+                2'b00: bht[res_idx] <= resolve_taken ? 2'b01 : 2'b00;
+                2'b01: bht[res_idx] <= resolve_taken ? 2'b10 : 2'b00;
+                2'b10: bht[res_idx] <= resolve_taken ? 2'b11 : 2'b01;
+                2'b11: bht[res_idx] <= resolve_taken ? 2'b11 : 2'b10;
+                default: bht[res_idx] <= 2'b01;
+            endcase
+
+            // BTB: update only when branch is actually taken
+            if (resolve_taken) begin
+                btb_target[res_idx] <= resolve_target;
+                btb_tag[res_idx]    <= res_tag;
+                btb_valid[res_idx]  <= 1'b1;
+            end
         end
     end
-end
 
 endmodule
