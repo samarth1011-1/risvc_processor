@@ -1,51 +1,27 @@
-`timescale 1ns/1ps
-
-module top_module #(
-    parameter IMEM_DEPTH = 12,
-    parameter DMEM_DEPTH = 12,
-    parameter IMEM_FILE  = "./programs/final_test.hex"
-)(
-    input wire clk,
-    input wire rst,
-
-    output wire [31:0] debug_pc,
-    output wire [31:0] debug_instruction,
-    output wire [31:0] debug_alu_result
+module riscv_core(
+    input clk,
+    input rst
 );
 
-// ========================= IF STAGE =========================
-
-wire [31:0] pc;
-wire pc_write_haz;
-wire pc_write_eff;
-wire [31:0] next_pc;
+wire [31:0] pc, next_pc, instr;
+wire pc_write;
 
 program_counter PC (
     .clk(clk),
     .rst(rst),
-    .pc_write(pc_write_eff),
+    .pc_write(pc_write),
     .next_pc(next_pc),
     .pc_out(pc)
 );
 
-wire [31:0] if_instr;
-
-instruction_memory #(
-    .DEPTH(IMEM_DEPTH),
-    .IN_FILE(IMEM_FILE)
-) IMEM (
+instruction_memory IMEM (
     .addr_i(pc),
     .enable(1'b1),
-    .instr_o(if_instr)
+    .instr_o(instr)
 );
 
-// ========================= IF/ID ============================
-
-wire [31:0] id_pc;
-wire [31:0] id_instr;
-wire if_id_write;
-wire if_id_flush;
-wire branch_flush;
+wire [31:0] id_pc, id_instr;
+wire if_id_write, if_id_flush;
 
 if_id_pipeline IF_ID (
     .clk(clk),
@@ -53,123 +29,116 @@ if_id_pipeline IF_ID (
     .enable(if_id_write),
     .flush(if_id_flush),
     .if_pc(pc),
-    .if_instr(if_instr),
+    .if_instr(instr),
     .id_pc(id_pc),
     .id_instr(id_instr)
 );
 
-// ========================= ID STAGE =========================
-
-wire [6:0] id_opcode;
-wire [4:0] id_rs1;
-wire [4:0] id_rs2;
-wire [4:0] id_rd;
-wire [2:0] id_funct3;
-wire [6:0] id_funct7;
-wire [31:0] id_imm;
+wire [6:0] opcode;
+wire [4:0] rs1, rs2, rd;
+wire [2:0] funct3;
+wire [6:0] funct7;
+wire [31:0] imm;
 
 decoder DEC (
     .instr_input(id_instr),
     .pc(id_pc),
-    .opcode(id_opcode),
-    .rs1(id_rs1),
-    .rs2(id_rs2),
-    .rd(id_rd),
-    .funct3(id_funct3),
-    .funct7(id_funct7),
-    .imm(id_imm)
+    .opcode(opcode),
+    .rs1(rs1),
+    .rs2(rs2),
+    .rd(rd),
+    .funct3(funct3),
+    .funct7(funct7),
+    .imm(imm)
 );
 
-wire cu_MemWrite, cu_MemRead, cu_ALUsrc, cu_branch, cu_RegWrite;
-wire [1:0] cu_ALUop;
+// CONTROL UNIT
+wire MemWrite, MemRead, ALUsrc, branch, RegWrite;
+wire [1:0] ALUop;
 
-control_unit CU (
-    .opcode(id_opcode),
-    .MemWrite(cu_MemWrite),
-    .MemRead(cu_MemRead),
-    .ALUsrc(cu_ALUsrc),
-    .branch(cu_branch),
-    .RegWrite(cu_RegWrite),
-    .ALUop(cu_ALUop)
+control_unit CTRL (
+    .opcode(opcode),
+    .MemWrite(MemWrite),
+    .MemRead(MemRead),
+    .ALUsrc(ALUsrc),
+    .branch(branch),
+    .RegWrite(RegWrite),
+    .ALUop(ALUop)
 );
 
+// ALU CONTROL
+wire [3:0] alu_ctrl;
+wire id_is_muldiv;
+wire [2:0] id_muldiv_op;
+
+alu_control ALUCTRL (
+    .ALUop(ALUop),
+    .opcode(opcode),
+    .funct3(funct3),
+    .funct7(funct7),
+    .ALU_control(alu_ctrl),
+    .is_muldiv(id_is_muldiv),
+    .muldiv_op(id_muldiv_op)
+);
+
+// REGISTER FILE
 wire [31:0] rs1_data, rs2_data;
 wire [31:0] wb_data;
-wire [4:0]  wb_rd;
-wire        wb_RegWrite;
+wire wb_RW;
+wire [4:0] wb_rd;
 
-register_file RF (
+register_file REGFILE (
     .clk(clk),
-    .write_enable(wb_RegWrite),
+    .write_enable(wb_RW),
     .rst(rst),
-    .rs1_addr(id_rs1),
-    .rs2_addr(id_rs2),
+    .rs1_addr(rs1),
+    .rs2_addr(rs2),
     .rd_addr(wb_rd),
     .rd_data(wb_data),
     .rs1_data(rs1_data),
     .rs2_data(rs2_data)
 );
 
-// ALU control
-wire [3:0] alu_control;
-wire       is_muldiv;
-wire [2:0] muldiv_op;
-
-alu_control ALUCTRL (
-    .ALUop(cu_ALUop),
-    .opcode(id_opcode),      // FIX 1: pass opcode so alu_control can
-                             //        distinguish R-type SUB from I-type ADDI
-    .funct3(id_funct3),
-    .funct7(id_funct7),
-    .ALU_control(alu_control),
-    .is_muldiv(is_muldiv),
-    .muldiv_op(muldiv_op)
-);
-
-// ========================= ID/EX ============================
-
-wire id_ex_enable;
-wire id_ex_flush_sig; // FIX 2: removed the dangling 'wire id_ex_flush'
-                      //        that was shadowing id_ex_flush_sig from HAZ
-
+wire ex_RW, ex_MR, ex_MW, ex_branch, ex_ALUsrc, ex_is_muldiv;
 wire [31:0] ex_pc, ex_rs1_val, ex_rs2_val, ex_imm;
-wire [4:0]  ex_rd, ex_rs1, ex_rs2;
-wire        ex_RW, ex_MR, ex_MW, ex_branch, ex_ALUsrc, ex_is_muldiv;
-wire [3:0]  ex_alu_sel;
-wire [2:0]  ex_funct3, ex_muldiv_op;
+wire [4:0] ex_rs1, ex_rs2, ex_rd;
+wire [3:0] ex_alu_sel;
+wire [2:0] ex_muldiv_op;
 
+wire id_ex_flush;
 
 id_ex_pipeline ID_EX (
     .clk(clk),
     .rst(rst),
-    .enable(id_ex_enable),
-    .flush(id_ex_flush_final), 
+    .enable(1'b1),
+    .flush(id_ex_flush),
 
-    .id_funct3(id_funct3),                       
     .id_pc(id_pc),
     .id_rs1_val(rs1_data),
     .id_rs2_val(rs2_data),
-    .id_imm(id_imm),
-    .id_rd(id_rd),
-    .id_rs1(id_rs1),
-    .id_rs2(id_rs2),
-    .id_RW(cu_RegWrite),
-    .id_MR(cu_MemRead),
-    .id_MW(cu_MemWrite),
-    .id_branch(cu_branch),
-    .id_ALUsrc(cu_ALUsrc),
-    .id_is_muldiv(is_muldiv),
-    .id_alu_sel(alu_control),
-    .id_muldiv_op(muldiv_op),
+    .id_imm(imm),
+    .id_rd(rd),
+    .id_rs1(rs1),
+    .id_rs2(rs2),
+
+    .id_RW(RegWrite),
+    .id_MR(MemRead),
+    .id_MW(MemWrite),
+    .id_branch(branch),
+    .id_ALUsrc(ALUsrc),
+    .id_is_muldiv(id_is_muldiv),
+    .id_alu_sel(alu_ctrl),
+    .id_muldiv_op(id_muldiv_op),
+    .id_funct3(funct3),
 
     .ex_pc(ex_pc),
-    .ex_funct3(ex_funct3),
     .ex_rs1_val(ex_rs1_val),
     .ex_rs2_val(ex_rs2_val),
     .ex_imm(ex_imm),
     .ex_rd(ex_rd),
     .ex_rs1(ex_rs1),
     .ex_rs2(ex_rs2),
+
     .ex_RW(ex_RW),
     .ex_MR(ex_MR),
     .ex_MW(ex_MW),
@@ -180,9 +149,9 @@ id_ex_pipeline ID_EX (
     .ex_muldiv_op(ex_muldiv_op)
 );
 
-// ========================= FORWARDING =========================
-
-wire [1:0] fwdA, fwdB;
+wire [1:0] forwardA, forwardB;
+wire mem_RW;
+wire [4:0] mem_rd;
 
 forwarding_unit FWD (
     .ex_rs1(ex_rs1),
@@ -190,112 +159,82 @@ forwarding_unit FWD (
     .mem_rd(mem_rd),
     .wb_rd(wb_rd),
     .mem_regwrite(mem_RW),
-    .wb_regwrite(wb_RegWrite),
-    .forwardA(fwdA),
-    .forwardB(fwdB)
+    .wb_regwrite(wb_RW),
+    .forwardA(forwardA),
+    .forwardB(forwardB)
 );
 
-// Forwarding muxes for ALU inputs
-wire [31:0] alu_in_A = (fwdA == 2'b10) ? mem_alu_result :
-                       (fwdA == 2'b01) ? wb_data :
-                       ex_rs1_val;
+// FORWARD MUX
+wire [31:0] alu_in1, alu_in2_raw, alu_in2;
 
-wire [31:0] alu_in_B_pre = (fwdB == 2'b10) ? mem_alu_result :
-                           (fwdB == 2'b01) ? wb_data :
-                           ex_rs2_val;
+assign alu_in1 =
+    (forwardA == 2'b10) ? mem_alu_result :
+    (forwardA == 2'b01) ? wb_data :
+    ex_rs1_val;
 
-wire [31:0] alu_in_B = ex_ALUsrc ? ex_imm : alu_in_B_pre;
+assign alu_in2_raw =
+    (forwardB == 2'b10) ? mem_alu_result :
+    (forwardB == 2'b01) ? wb_data :
+    ex_rs2_val;
 
-wire [31:0] forwarded_rs2 = (fwdB == 2'b10) ? mem_alu_result :
-                            (fwdB == 2'b01) ? wb_data :
-                            ex_rs2_val;
+assign alu_in2 = ex_ALUsrc ? ex_imm : alu_in2_raw;
 
-// ========================= EXECUTE ============================
 
+// ALU
 wire [31:0] alu_result;
-wire        alu_Z;
 
-ALU alu_unit (
-    .A(alu_in_A),
-    .B(alu_in_B),
+ALU ALU (
+    .A(alu_in1),
+    .B(alu_in2),
     .opcode(ex_alu_sel),
-    .result(alu_result),
-    .Z(alu_Z)
+    .result(alu_result)
 );
 
-wire muldiv_busy, muldiv_ready;
+// MUL/DIV
 wire [31:0] muldiv_result;
-wire muldiv_start = ex_is_muldiv && !muldiv_busy && !muldiv_ready;
+wire muldiv_busy, muldiv_ready;
 
 mul_div MULDIV (
     .clk(clk),
     .rst(rst),
-    .start(muldiv_start),
+    .start(ex_is_muldiv),
     .opcode(ex_muldiv_op),
-    .rs1(alu_in_A),
-    .rs2(alu_in_B_pre),
+    .rs1(alu_in1),
+    .rs2(alu_in2),
     .busy(muldiv_busy),
     .ready(muldiv_ready),
     .result(muldiv_result)
 );
 
-reg [31:0] muldiv_result_held;
-reg        result_valid;
+wire [31:0] ex_result;
 
-always @(posedge clk) begin
-    if (rst) begin
-        muldiv_result_held <= 0;
-        result_valid       <= 0;
-    end else if (muldiv_ready) begin
-        muldiv_result_held <= muldiv_result;
-        result_valid       <= 1;
-    end else if (!ex_is_muldiv) begin
-        result_valid <= 0;
-    end
-end
+assign ex_result =
+    (ex_is_muldiv && muldiv_ready) ? muldiv_result :
+    (!ex_is_muldiv) ? alu_result :
+    32'b0;
 
-wire [31:0] ex_final_result = ex_is_muldiv ?
-                              (result_valid  ? muldiv_result_held :
-                               muldiv_ready  ? muldiv_result : 0) :
-                              alu_result;
+// BRANCH
+wire branch_taken = ex_branch && (alu_in1 == alu_in2);
+wire [31:0] branch_target = ex_pc + ex_imm;
 
-wire [31:0] ex_branch_target = ex_pc + ex_imm;
-reg ex_branch_taken;
-always @(*) begin
-    case (ex_funct3)
-        3'b000: ex_branch_taken = ex_branch && alu_Z;     // BEQ
-        3'b001: ex_branch_taken = ex_branch && !alu_Z;    // BNE
-        default: ex_branch_taken = 1'b0;
-    endcase
-end
-
-// ========================= EX/MEM ============================
-
+wire mem_MR, mem_MW;
 wire [31:0] mem_alu_result, mem_rs2_val;
-wire [4:0]  mem_rd;
-wire        mem_RW, mem_MR, mem_MW, mem_branch;
-wire [31:0] mem_branch_target;
-wire        mem_branch_taken;
-
-wire stall;
-wire muldiv_stall    = ex_is_muldiv && !muldiv_ready;
-wire pipeline_enable = ~stall && ~muldiv_stall;
-wire id_ex_flush_final;
 
 ex_mem_pipeline EX_MEM (
     .clk(clk),
     .rst(rst),
-    .enable(pipeline_enable),
+    .enable(1'b1),
     .flush(1'b0),
-    .ex_alu_result(ex_final_result),
-    .ex_rs2_val(forwarded_rs2),
+
+    .ex_alu_result(ex_result),
+    .ex_rs2_val(alu_in2_raw),
     .ex_rd(ex_rd),
     .ex_RW(ex_RW),
     .ex_MR(ex_MR),
     .ex_MW(ex_MW),
     .ex_branch(ex_branch),
-    .ex_branch_target(ex_branch_target),
-    .ex_branch_taken(ex_branch_taken),
+    .ex_branch_target(branch_target),
+    .ex_branch_taken(branch_taken),
     .ex_is_muldiv(ex_is_muldiv),
 
     .mem_alu_result(mem_alu_result),
@@ -303,20 +242,12 @@ ex_mem_pipeline EX_MEM (
     .mem_rd(mem_rd),
     .mem_RW(mem_RW),
     .mem_MR(mem_MR),
-    .mem_MW(mem_MW),
-    .mem_branch(mem_branch),
-    .mem_branch_target(mem_branch_target),
-    .mem_branch_taken(mem_branch_taken),
-    .mem_is_muldiv()
+    .mem_MW(mem_MW)
 );
-
-// ========================= MEMORY ============================
 
 wire [31:0] mem_read_data;
 
-data_memory #(
-    .DEPTH(DMEM_DEPTH)
-) DMEM (
+data_memory DMEM (
     .clk(clk),
     .rst(rst),
     .MemRead(mem_MR),
@@ -326,62 +257,49 @@ data_memory #(
     .read_data_o(mem_read_data)
 );
 
-// ========================= MEM/WB ============================
-
+wire wb_MR;
 wire [31:0] wb_alu_result, wb_read_data;
-wire        wb_MR;
 
 mem_wb_pipeline MEM_WB (
     .clk(clk),
     .rst(rst),
-    .enable(pipeline_enable),   
+    .enable(1'b1),
     .flush(1'b0),
+
     .mem_alu_result(mem_alu_result),
     .mem_read_data(mem_read_data),
     .mem_rd(mem_rd),
     .mem_RW(mem_RW),
     .mem_MR(mem_MR),
+
     .wb_alu_result(wb_alu_result),
     .wb_read_data(wb_read_data),
     .wb_rd(wb_rd),
-    .wb_RW(wb_RegWrite),
+    .wb_RW(wb_RW),
     .wb_MR(wb_MR)
 );
 
+// WRITEBACK
 assign wb_data = wb_MR ? wb_read_data : wb_alu_result;
 
-// ========================= HAZARD UNIT ============================
+assign next_pc = branch_taken ? branch_target : (pc + 4);
 
-hazard_detection HAZ (
-    .clk(clk),
-    .rst(rst),
-    .id_rs1(id_rs1),
-    .id_rs2(id_rs2),
+hazard_detection HZD (
+    .id_rs1(rs1),
+    .id_rs2(rs2),
     .ex_rd(ex_rd),
     .ex_memread(ex_MR),
-    .id_is_muldiv(is_muldiv),
+    .id_is_muldiv(id_is_muldiv),
     .ex_is_muldiv(ex_is_muldiv),
     .muldiv_busy(muldiv_busy),
     .muldiv_ready(muldiv_ready),
-    .stall(stall),
-    .pc_write(pc_write_haz),
+    .stall(),
+    .pc_write(pc_write),
     .if_id_write(if_id_write),
-    .id_ex_flush(id_ex_flush_sig),
+    .id_ex_flush(id_ex_flush),
     .mem_stall()
 );
 
-// Pipeline control signals
-assign branch_flush = mem_branch_taken;
-assign pc_write_eff = pc_write_haz;
-assign id_ex_enable = pipeline_enable;
-assign id_ex_flush_final = id_ex_flush_sig || mem_branch_taken;
-assign if_id_flush  = mem_branch_taken;
-assign next_pc      = mem_branch_taken ? mem_branch_target : (pc + 32'd4);
-
-// ========================= DEBUG ==============================
-
-assign debug_pc          = id_pc;
-assign debug_instruction = id_instr;
-assign debug_alu_result  = mem_alu_result;
+assign if_id_flush = branch_taken;
 
 endmodule
