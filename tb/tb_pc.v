@@ -1,30 +1,78 @@
-module testbench_program_counter;
-reg clk,rst,branch_taken;
-reg [31:0] branch_target;
-wire [31:0] pc_out;
+`timescale 1ns/1ps
 
-program_counter pc(
-    .clk(clk),
-    .rst(rst),
-    .branch_target(branch_target),
-    .branch_taken(branch_taken),
-    .pc_out(pc_out)
-);
+module tb_program_counter;
 
-initial clk = 0;
-always #5 clk=~clk; // generate the required clock cycle
+    reg clk;
+    reg rst;
+    reg pc_write;
+    reg [31:0] next_pc;
+    wire [31:0] pc_out;
 
-initial begin
-    $dumpfile("tb_pc.vcd");
-    $dumpvars(0,testbench_program_counter);
-    $monitor("clk=%b rst=%b branch_taken=%b branch_target=%d pc_out=%d",clk,rst,branch_taken,branch_target,pc_out);
-    rst = 1; branch_taken = 0; branch_target = 32'd0; // reset the counter first
-    #20 rst = 0; // pc begins counting by 4
-    #50 branch_taken = 1; branch_target = 100; // branch updates to 100
-    #10 branch_taken = 0;
-    #40 rst=1;
-    #20 rst =0;
-    #50 $finish;
-end
+    program_counter uut (
+        .clk(clk),
+        .rst(rst),
+        .pc_write(pc_write),
+        .next_pc(next_pc),
+        .pc_out(pc_out)
+    );
+
+    always #5 clk = ~clk;
+
+    task check;
+        input [31:0] expected;
+        begin
+            if (pc_out !== expected) begin
+                $display("FAIL at time %0t: Expected = %h, Got = %h", $time, expected, pc_out);
+                $stop;
+            end else begin
+                $display("PASS at time %0t: pc_out = %h", $time, pc_out);
+            end
+        end
+    endtask
+
+    initial begin
+        $dumpfile("program_counter.vcd");
+        $dumpvars(0, tb_program_counter);
+
+        clk = 0;
+        rst = 1;
+        pc_write = 0;
+        next_pc = 0;
+
+        #10;
+        check(32'h00000000);
+
+        rst = 0;
+
+        pc_write = 1;
+        next_pc = 32'h00000004;
+        #10;
+        check(32'h00000004);
+
+        pc_write = 0;
+        next_pc = 32'h00000008;
+        #10;
+        check(32'h00000004);
+
+        pc_write = 1;
+        next_pc = 32'h0000000C;
+        #10;
+        check(32'h0000000C);
+
+        rst = 1;
+        pc_write = 1;
+        next_pc = 32'hFFFFFFFF;
+        #10;
+        check(32'h00000000);
+
+        rst = 0;
+        pc_write = 1;
+        next_pc = 32'h00000010;
+        #10;
+        check(32'h00000010);
+
+        $display("All tests passed.");
+        $finish;
+    end
 
 endmodule
