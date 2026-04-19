@@ -1,33 +1,85 @@
 `timescale 1ns/1ps
-module tb_dcder;
-reg [31:0] instr_input;
-reg [31:0] pc;
-wire [6:0] opcode;
-wire [4:0] rs1;
-wire [4:0] rs2;
-wire [4:0] rd;
-wire [2:0] funct3;
-wire [6:0] funct7;
-wire [31:0] imm;
 
-initial pc = 32'd0;
+module tb_decoder;
 
-decoder DUT(.instr_input(instr_input), .pc(pc), .opcode(opcode), .rs1(rs1), .rs2(rs2),
-.rd(rd), .funct3(funct3), .funct7(funct7), .imm(imm));
+    reg [31:0] instr_input;
+    reg [31:0] pc;
 
-initial begin
-    $dumpfile("vcd_files/decoder.vcd");
-    $dumpvars(0,tb_dcder);
-    $monitor("Instr=%h | PC=%d | Opcode=%b | RS1=%d | RS2=%d | RD=%d | IMM=%d",instr_input, pc, opcode, rs1, rs2, rd, imm);
-    instr_input = 32'b0;
-    #10 instr_input = 32'h00500093;   // ADDI x1, x0, 5
-    #10 instr_input = 32'h002081B3;   // ADD x3, x1, x2
-    #10 instr_input = 32'h0020A023;   // SW x2, 8(x1)
-    #10 instr_input = 32'h00208463;   // BEQ x1, x2, 16
-    #10 instr_input = 32'h12345037;   // LUI x10, 0x12345
-    #10 instr_input = 32'h020000EF;   // JAL x1, 32
+    wire [6:0] opcode;
+    wire [4:0] rs1, rs2, rd;
+    wire [2:0] funct3;
+    wire [6:0] funct7;
+    wire [31:0] imm;
 
-    #20 $finish;
-end
+    decoder uut (
+        .instr_input(instr_input),
+        .pc(pc),
+        .opcode(opcode),
+        .rs1(rs1),
+        .rs2(rs2),
+        .rd(rd),
+        .funct3(funct3),
+        .funct7(funct7),
+        .imm(imm)
+    );
+
+    task check;
+        input [31:0] exp_imm;
+        input [6:0] exp_opcode;
+        begin
+            if (imm !== exp_imm || opcode !== exp_opcode) begin
+                $display("FAIL @ %0t | imm=%h (exp %h), opcode=%b (exp %b)",
+                         $time, imm, exp_imm, opcode, exp_opcode);
+                $stop;
+            end else begin
+                $display("PASS @ %0t", $time);
+            end
+        end
+    endtask
+
+    initial begin
+        $dumpfile("decoder.vcd");
+        $dumpvars(0, tb_decoder);
+
+        pc = 0;
+
+        instr_input = 32'b0000000_00011_00010_000_00001_0110011;
+        #1;
+        check(32'b0, 7'b0110011);
+
+        instr_input = 32'b000000001010_00010_000_00001_0010011;
+        #1;
+        check(32'd10, 7'b0010011);
+
+        instr_input = 32'b111111111111_00010_000_00001_0010011;
+        #1;
+        check(32'hFFFFFFFF, 7'b0010011);
+
+        instr_input = 32'b0000000_00011_00010_010_01000_0100011;
+        #1;
+        check(32'd8, 7'b0100011);
+
+        instr_input = 32'b0000000_00011_00010_000_00100_1100011;
+        #1;
+        check(32'd4, 7'b1100011);
+
+        instr_input = 32'h12345037;
+        #1;
+        check(32'h12345000, 7'b0110111);
+
+        instr_input = 32'b00000000000100000000000011101111;
+        #1;
+        if (imm == 0) begin
+            $display("FAIL J-type imm");
+            $stop;
+        end
+
+        instr_input = 32'hFFFFFFFF;
+        #1;
+        check(32'b0, instr_input[6:0]);
+
+        $display("All tests passed.");
+        $finish;
+    end
 
 endmodule

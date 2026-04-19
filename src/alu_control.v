@@ -13,33 +13,38 @@ always @(*) begin
     is_muldiv   = 0;
     muldiv_op   = 3'b000;
 
-    if (ALUop == 2'b00)
-        ALU_control = 4'b0000;
-    else if (ALUop == 2'b01)
-        ALU_control = 4'b0001;
-    else if (ALUop == 2'b10) begin
-        if (funct7 == 7'b0000001 && opcode == 7'b0110011) begin
-            is_muldiv = 1;
-            muldiv_op = funct3;
-        end else begin
-            case (funct3)
-                3'b000: begin
-                    if (opcode == 7'b0110011 && funct7 == 7'b0100000)
-                        ALU_control = 4'b0001; // SUB (R-type only)
-                    else
-                        ALU_control = 4'b0000; // ADD
-                end
-                3'b111: ALU_control = 4'b0010; // AND
-                3'b110: ALU_control = 4'b0011; // OR
-                3'b100: ALU_control = 4'b0100; // XOR
-                3'b001: ALU_control = 4'b0101; // SLL
-                3'b101: ALU_control = (funct7 == 7'b0100000) ? 4'b0111 : 4'b0110; // SRA:SRL
-                3'b010: ALU_control = 4'b1000; // SLT
-                3'b011: ALU_control = 4'b1001; // SLTU
-                default: ALU_control = 4'b0000;
-            endcase
+    case (ALUop)
+        2'b00: ALU_control = 4'b0000;
+        
+        2'b01: ALU_control = 4'b0001;
+
+        2'b10: begin
+            if (funct7 == 7'b0000001 && opcode == 7'b0110011) begin
+                is_muldiv = 1;
+                muldiv_op = funct3;
+            end 
+            else begin
+                case (funct3)
+                    3'b000: begin
+                        if (opcode == 7'b0110011 && funct7 == 7'b0100000)
+                            ALU_control = 4'b0001; // SUB
+                        else
+                            ALU_control = 4'b0000; // ADD
+                    end
+                    3'b111: ALU_control = 4'b0010; // AND
+                    3'b110: ALU_control = 4'b0011; // OR
+                    3'b100: ALU_control = 4'b0100; // XOR
+                    3'b001: ALU_control = 4'b0101; // SLL
+                    3'b101: ALU_control = (funct7 == 7'b0100000) ? 4'b0111 : 4'b0110; // SRA/SRL
+                    3'b010: ALU_control = 4'b1000; // SLT
+                    3'b011: ALU_control = 4'b1001; // SLTU
+                    default: ALU_control = 4'b0000;
+                endcase
+            end
         end
-    end
+
+        default: ALU_control = 4'b0000;
+    endcase
 end
 
 endmodule

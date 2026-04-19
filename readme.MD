@@ -1,20 +1,23 @@
 # 5-Stage Pipelined RISC-V Processor
 
-A hardware implementation of a pipelined RISC-V processor supporting the RV32IM instruction set.
+A hardware implementation of a pipelined RISC-V processor built in Verilog, supporting the RV32I base with M-extension multiply/divide support and shift operations.
 
 ## Features
 
 - **5-stage pipeline** (IF → ID → EX → MEM → WB)
-- **Data forwarding** to minimize pipeline stalls
-- **Hazard detection** for load-use conflicts (**in testing**)
-- **Multiply/Divide unit** (M extension support)
-- **Branch handling** with pipeline flush (**in testing**)
-    
+- **Data forwarding** to reduce stalls on dependent instructions
+- **Hazard detection** for load-use conflicts and multi-cycle operations
+- **Multiply/Divide unit** with busy/ready handshake
+- **Branch handling** with pipeline flush
+- **Register file bypassing** for same-cycle read/write cases
+- **Separate instruction and data memory**
+- **Module-level verification** with self-checking testbenches
 
 ## Quick Start
+
 ```bash
 # Compile
-iverilog -o cpu top_module.v tb_top.v *.v
+iverilog -o cpu tb_top.v src/*.v
 
 # Run simulation
 vvp cpu
@@ -23,46 +26,62 @@ vvp cpu
 gtkwave cpu_dump.vcd
 ```
 
-## Test Program
+## Verification
 
-Simple test (`final_test.hex`):
-```
-x1 = 5
-x2 = 10
-x3 = x1 + x2 = 15
-x4 = x1 - x2 = -5
-```
+The core was verified in pieces first and then tested at the top level with a small program in hex format.  
+Module-level testbenches were used for:
+
+- program counter
+- decoder
+- control unit
+- register file
+- multiply/divide unit
+- instruction memory
+- data memory
+- forwarding unit
+- hazard detection
+- pipeline registers
+
+Top-level simulation was then used to confirm that the full processor could fetch, decode, execute, access memory, and write back correctly.
 
 ## Project Structure
-```
+
+```text
 ├── top_module.v           # Top-level integration
-├── program_counter.v      # PC logic
-├── instruction_memory.v   # Program storage
+├── pc.v                   # Program counter
+├── instruction_memory.v   # Instruction storage
 ├── decoder.v              # Instruction decoder
 ├── control_unit.v         # Control signal generation
-├── register_file.v        # 32 registers
-├── ALU.v                  # Arithmetic/logic unit
+├── reg_file.v             # 32x32 register file
+├── alu.v                  # Arithmetic/logic unit
+├── alu_control.v         # ALU and M-extension control
 ├── mul_div.v              # Multiply/divide unit
 ├── data_memory.v          # Data RAM
 ├── forwarding_unit.v      # Data hazard resolution
-├── hazard_detection.v     # Stall logic
-├── *_pipeline.v           # Pipeline registers
-└── tb_top.v               # Testbench
+├── hazard_detection.v     # Stall and flush control
+├── if_id_pipeline.v       # IF/ID pipeline register
+├── id_ex_pipeline.v       # ID/EX pipeline register
+├── ex_mem_pipeline.v      # EX/MEM pipeline register
+├── mem_wb_pipeline.v      # MEM/WB pipeline register
+└── tb_top.v               # Top-level testbench
 ```
 
 ## What I Learned
 
-- Designing FSM-based controllers for sequential operations
-- Implementing data forwarding to resolve pipeline hazards
-- Working with 2's complement arithmetic in hardware
-- Managing timing and synchronization in multi-stage pipelines
+- How a 5-stage pipeline moves instructions through each stage
+- How forwarding and stalling are used to handle hazards
+- How branch flushing affects pipeline flow
+- How to handle multi-cycle operations in a pipeline
+- How to debug RTL with waveform-based simulation
+- How small control bugs can affect the whole processor
 
 ## Verified Instructions
 
-✓ Arithmetic (ADD, SUB, MUL, DIV)  
-✓ Logic (AND, OR, XOR)  
-✓ Memory (LW, SW)  
-X Shifts (SLL, SRL, SRA)  (**under testing**)
-X Branches (BEQ, BNE)     (**under testing**)
+- Arithmetic: `ADD`, `SUB`, `MUL`, `DIV`
+- Logic: `AND`, `OR`, `XOR`
+- Shifts: `SLL`, `SRL`, `SRA`
+- Immediate ops: `ADDI`, `ANDI`, `ORI`
+- Memory: `LW`, `SW`
+- Branches: `BEQ`
 
-Built as a learning project to understand processor architecture and pipeline design.
+Built as a learning project to understand processor architecture, pipelining, and RTL design in practice.
