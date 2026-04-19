@@ -1,56 +1,42 @@
-# PowerShell script for Verilog simulation in VSCode terminal
-# Compiles all .v files in src/ directory + testbench file
+$ErrorActionPreference = "Stop"
 
-# === CONFIGURATION ===
-$TESTBENCH = "tb/tb_top.v"        # Change to your testbench filename
-$OUTPUT = "simulation.vvp"         # Compiled output
+$SRC_DIR = "src"
+$TB_FILE = "tb/tb_top.v"
+$OUT_FILE = "sim.out"
 
-Write-Host "`n=== Verilog Compilation & Simulation ===`n" -ForegroundColor Cyan
+Write-Host "Compiling RISC-V Core..."
 
-# Check if src directory exists
-if (-Not (Test-Path "src" -PathType Container)) {
-    Write-Host "[ERROR] src/ directory not found in current location!" -ForegroundColor Red
-    Write-Host "Current directory: $(Get-Location)" -ForegroundColor Yellow
-    exit 1
-}
-
-# Check if testbench file exists
-if (-Not (Test-Path $TESTBENCH -PathType Leaf)) {
-    Write-Host "[ERROR] Testbench file '$TESTBENCH' not found!" -ForegroundColor Red
-    Write-Host "Current directory: $(Get-Location)" -ForegroundColor Yellow
-    exit 1
-}
-
-# Get all .v files from src directory
-$srcFiles = Get-ChildItem -Path "src\*.v" -File
-
-if ($srcFiles.Count -eq 0) {
-    Write-Host "[ERROR] No .v files found in src/ directory!" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "[INFO] Found $($srcFiles.Count) files in src/ directory" -ForegroundColor Green
-Write-Host "[INFO] Testbench: $TESTBENCH" -ForegroundColor Green
-Write-Host "`n--- Compiling ---`n" -ForegroundColor Yellow
-
-# Compile: iverilog -o output src/*.v testbench.v
-iverilog -o $OUTPUT src/*.v $TESTBENCH
+iverilog `
+-o $OUT_FILE `
+-s tb_riscv_core `
+$TB_FILE `
+"$SRC_DIR/alu_control.v" `
+"$SRC_DIR/alu.v" `
+"$SRC_DIR/branch_predictor.v" `
+"$SRC_DIR/control_unit.v" `
+"$SRC_DIR/data_memory.v" `
+"$SRC_DIR/decoder.v" `
+"$SRC_DIR/ex_mem_pipeline.v" `
+"$SRC_DIR/forwarding_unit.v" `
+"$SRC_DIR/hazard_detection.v" `
+"$SRC_DIR/id_ex_pipeline.v" `
+"$SRC_DIR/if_id_pipeline.v" `
+"$SRC_DIR/instruction_memory.v" `
+"$SRC_DIR/mem_wb_pipeline.v" `
+"$SRC_DIR/mul_div_unit.v" `
+"$SRC_DIR/pc.v" `
+"$SRC_DIR/reg_file.v" `
+"$SRC_DIR/top_module.v"
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n[FAILED] Compilation failed!`n" -ForegroundColor Red
-    exit 1
+    Write-Host "Compilation FAILED"
+    exit
 }
 
-Write-Host "`n[SUCCESS] Compilation completed!`n" -ForegroundColor Green
+Write-Host "Compilation SUCCESS"
 
-# Run simulation
-Write-Host "--- Running Simulation ---`n" -ForegroundColor Yellow
-vvp $OUTPUT
+Write-Host "Running Simulation..."
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n[FAILED] Simulation failed!`n" -ForegroundColor Red
-    exit 1
-}
+vvp $OUT_FILE
 
-Write-Host "`n[SUCCESS] Simulation completed!`n" -ForegroundColor Green
-Write-Host "=== All Done! ===`n" -ForegroundColor Cyan
+Write-Host "Simulation Finished"
