@@ -23,10 +23,13 @@ reg[31:0] mul_result;
 reg signed [63:0] mulh_ss;
 reg signed [63:0] mulh_su;
 reg        [63:0] mulh_uu;
+reg [31:0] next_remainder;
+reg [31:0] next_quotient;
+reg [31:0] next_dividend;
 
 always @(*) begin
     mulh_ss = $signed(rs1) * $signed(rs2);
-    mulh_su = $signed(rs1) * $signed({1'b0, rs2});
+    mulh_su = $signed(rs1) * $unsigned(rs2);
     mulh_uu = {1'b0, rs1}  * {1'b0, rs2};
     case (opcode)
         3'b000: mul_result = rs1 * rs2;
@@ -45,6 +48,7 @@ always @(posedge clk) begin
         result <= 0;
         quotient <= 0;
         remainder <= 0;
+        signA<=0;signB<=0;
     end else begin
         case (state)
             IDLE: begin
@@ -71,10 +75,11 @@ always @(posedge clk) begin
                 count <= 31;
 
                 if (rs2 == 0) begin
-                    result <= (opcode == 3'b100 || opcode == 3'b101) ? 32'hFFFFFFFF : rs1;
+                    quotient <= 32'hFFFFFFFF;
+                    remainder <= rs1;
                     state <= DONE;
                 end else if ((rs1 == 32'h80000000) && (rs2 == 32'hFFFFFFFF) && (opcode == 3'b100)) begin
-                    result <= 32'h80000000;
+                    quotient <= 32'h80000000;
                     state <= DONE;
                 end else begin
                     dividend <= ((opcode == 3'b100 || opcode == 3'b110) && rs1[31]) ? -rs1 : rs1;
@@ -84,20 +89,24 @@ always @(posedge clk) begin
             end
 
             DIV: begin
-                remainder = {remainder[30:0], dividend[31]};
-                dividend  = {dividend[30:0], 1'b0};
+    next_remainder = {remainder[30:0], dividend[31]};
+    next_dividend  = {dividend[30:0], 1'b0};
 
-                if (remainder >= divisor) begin
-                    remainder = remainder - divisor;
-                    quotient = {quotient[30:0], 1'b1};
-                end else begin
-                    quotient = {quotient[30:0], 1'b0};
-                end
+    if (next_remainder >= divisor) begin
+        next_remainder = next_remainder - divisor;
+        next_quotient  = {quotient[30:0], 1'b1};
+    end else begin
+        next_quotient  = {quotient[30:0], 1'b0};
+    end
 
-                count <= count - 1;
-                if (count == 0)
-                    state <= DONE;
-            end
+    remainder <= next_remainder;
+    dividend  <= next_dividend;
+    quotient  <= next_quotient;
+
+    count <= count - 1;
+    if (count == 0)
+        state <= DONE;
+end
 
             DONE: begin
                 case (opcode)
