@@ -1,6 +1,6 @@
 module instruction_memory #(
     parameter DEPTH = 12, // this depends on the size of the program we are going to run
-    parameter IN_FILE = "final_test.hex"
+    parameter IN_FILE = "./programs/final_test.hex"
 )(
     input [31:0] addr_i,                 // this is the output from PC
     input enable,                        // we can use this to stop fetching instructions when needed
