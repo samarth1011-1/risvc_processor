@@ -24,7 +24,7 @@ initial begin
     #20;
     rst = 0;
 
-    #300;
+    #2000;
 
     $display("\nREGISTER FILE DUMP");
 

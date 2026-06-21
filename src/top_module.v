@@ -105,13 +105,15 @@ wire [4:0] ex_rs1, ex_rs2, ex_rd;
 wire [3:0] ex_alu_sel;
 wire [2:0] ex_muldiv_op;
 
-wire id_ex_flush;
+wire hazard_id_ex_flush;
+wire pipeline_stall;
+wire ex_muldiv_stall = ex_is_muldiv && !muldiv_result_ready;
 
 id_ex_pipeline ID_EX (
     .clk(clk),
     .rst(rst),
-    .enable(1'b1),
-    .flush(id_ex_flush),
+    .enable(!ex_muldiv_stall),
+    .flush(hazard_id_ex_flush || branch_taken),
 
     .id_pc(id_pc),
     .id_rs1_val(rs1_data),
@@ -193,11 +195,23 @@ ALU ALU (
 // MUL/DIV
 wire [31:0] muldiv_result;
 wire muldiv_busy, muldiv_ready;
+reg muldiv_active;
+wire muldiv_start = ex_is_muldiv && !muldiv_active;
+wire muldiv_result_ready = ex_is_muldiv && muldiv_active && muldiv_ready;
+
+always @(posedge clk) begin
+    if (rst)
+        muldiv_active <= 1'b0;
+    else if (muldiv_active && muldiv_ready)
+        muldiv_active <= 1'b0;
+    else if (muldiv_start)
+        muldiv_active <= 1'b1;
+end
 
 mul_div MULDIV (
     .clk(clk),
     .rst(rst),
-    .start(ex_is_muldiv),
+    .start(muldiv_start),
     .opcode(ex_muldiv_op),
     .rs1(alu_in1),
     .rs2(alu_in2),
@@ -209,7 +223,7 @@ mul_div MULDIV (
 wire [31:0] ex_result;
 
 assign ex_result =
-    (ex_is_muldiv && muldiv_ready) ? muldiv_result :
+    (ex_is_muldiv && muldiv_result_ready) ? muldiv_result :
     (!ex_is_muldiv) ? alu_result :
     32'b0;
 
@@ -223,7 +237,7 @@ wire [31:0] mem_alu_result, mem_rs2_val;
 ex_mem_pipeline EX_MEM (
     .clk(clk),
     .rst(rst),
-    .enable(1'b1),
+    .enable(!ex_muldiv_stall),
     .flush(1'b0),
 
     .ex_alu_result(ex_result),
@@ -293,10 +307,10 @@ hazard_detection HZD (
     .ex_is_muldiv(ex_is_muldiv),
     .muldiv_busy(muldiv_busy),
     .muldiv_ready(muldiv_ready),
-    .stall(),
+    .stall(pipeline_stall),
     .pc_write(pc_write),
     .if_id_write(if_id_write),
-    .id_ex_flush(id_ex_flush),
+    .id_ex_flush(hazard_id_ex_flush),
     .mem_stall()
 );
 

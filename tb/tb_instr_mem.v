@@ -5,8 +5,8 @@ reg enable;
 wire [31:0] instr_o;
 
 instruction_memory #(
-    .DEPTH(256), // this depends on the size of the program we are going to run
-    .IN_FILE("./programs/test_add.hex")
+    .DEPTH(19),
+    .IN_FILE("./programs/core_basic_forward.hex")
 ) DUT (
     .addr_i(addr_i),
     .enable(enable),
@@ -21,12 +21,19 @@ end
 initial begin
     $dumpfile("vcd_files/tb_instr_mem.vcd");
     $dumpvars(0, tb_instr_mem);
-    $monitor("Time = %0t, addr_i = %h, enable = %b, instr_o = %h", $time, addr_i, enable, instr_o);
+
     #10 addr_i = 32'b0; enable = 1'b1;
+    #1 if (instr_o !== 32'h00500093) begin $display("FAIL IMEM addr 0 got=%h", instr_o); $finish; end
     #10 addr_i = 32'd4; enable = 1'b1;
+    #1 if (instr_o !== 32'h00700113) begin $display("FAIL IMEM addr 4 got=%h", instr_o); $finish; end
     #10 addr_i = 32'd8; enable = 1'b1;
+    #1 if (instr_o !== 32'h002081b3) begin $display("FAIL IMEM addr 8 got=%h", instr_o); $finish; end
     #10 enable = 1'b0;
+    #1 if (instr_o !== 32'h00000013) begin $display("FAIL IMEM disabled got=%h", instr_o); $finish; end
     #10 addr_i = 32'd12; enable = 1'b1;
+    #1 if (instr_o !== 32'h40118233) begin $display("FAIL IMEM addr 12 got=%h", instr_o); $finish; end
+
+    $display("INSTRUCTION MEMORY TESTS PASSED");
     #10 $finish;
 end
 endmodule
